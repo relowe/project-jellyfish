@@ -1,0 +1,158 @@
+Teaching Langauge Brainstorming 6/13/2022
+=========================================
+- It should be imperative, procedural, but not object oriented. Object 
+  Oriented programming is a refinement of imperative programming.
+  - OOP is for large applications
+  - it adds complexity to novice applications.
+
+- It should be strongly typed.
+
+- Types should be simple
+  - number (Should integer be distinct somehow?)
+  - text   (for any length)
+
+- User defined types like C structs
+
+- Arrays, should be able to define upper and lower bounds with 1 being
+  the default.
+
+- No confusing sigils {}; etc.
+
+- Structures begin with a keyword and end with the pattern 
+  "end keyword"
+
+  while condition do
+      ...
+  end while
+
+  if condition then
+     ...
+  else if condition then 
+     ...
+  else
+     ...
+  end if
+
+- There should be imposed structure on the program file
+  definitions
+      function name (args) returns nothing
+         ...
+      end function
+
+      global_x : number
+  end definitions
+
+  program 
+     ...
+     ...
+  end program
+
+- This will avoid a lot of confusion when defining functions.
+
+- Records and functions can only be defined in the def's block.
+
+- Definitions can be in any order, no need for prototyppes!
+
+- Global variables can only be declared in definition section.
+
+- Program acts like local scope, really like a main function.
+  Variables defined there are local.
+
+- Follow the same lexicographical scoping rules of C and java.
+
+Name Ideas
+  Beginner's Embedable _____ _____  ?
+  Make it spell something, I like "BE" as the beginning though.
+
+Fuller example (doing bad fibonacci numbers)
+
+definitions
+    function fib(n:number) returns number
+        if n <= 2 then
+            return 1
+        end if
+
+        return fib(n-1)+fib(n-2)
+    end function
+end definitions
+
+program
+    n,i : number
+    display("How Many?")
+    n = input_number()
+    i = 1
+    repeat n times
+        display(fib(n), "\n")
+    end repeat
+end program
+
+
+Questions:
+  - Do I want syntax for variadic functions?
+  - Perhaps only built-in functionns (like display) can be variadic?
+  - How do I define my set of built-in functions? At embeddable level?
+
+Operator Ideas
+==============
+ = assignment, except in if or while where it becomes equality 
+   (see BASIC)
+
++,-,*,/ usual meanings
+^ exponent
+<, >, <=, >=, != usual meanings
+and, or, not - boolean logical operations
+
+- should I build bitwise operations too? Maybe make the above bitwise.
+- What about remainder of division? Maybe I could have a mod
+  operation? x mod y? x%y?
+- If the logical operators are bitwise, then make all the comparison
+  operators return exactly 0 or 1 to make it work out.
+- Use C style truth, maybe? Or should there be a boolean type?
+  - I am thinking no boolean type.
+- Bitwise operation could be important for some low level things. What
+  would I use for the shift operator? Maybe ASM style SR and SL?
+
+     2 SL 3 -> 8
+
+Some syntax ideas
+=================
+while condition 
+  ...
+  ...
+end while
+
+
+if condition then
+  ...
+  ...
+end if
+
+
+if condition then
+  ...
+else
+  ...
+end if
+
+
+if condition then
+  ...
+else if condition then
+  ...
+end if
+
+
+Perhaps I should make the "then" optional?
+
+An infinite loop:
+
+repeat 
+ ...
+end repeat
+
+
+A loop of definite iteration
+
+repeat n times
+  ...
+end repeat

@@ -1,1 +1,21 @@
 // This will hold the BNF for the language
+
+< CODE >                 ::= 'definitions' < definitions >
+                           | < program >
+
+< definitions >          ::= < definition > < definitions >
+                           | 'end definitions'
+
+< definition >           ::= 'function' < function-def >
+                           | < variable-def >
+
+< program >              ::= 'program' < statements > 'end program'
+
+< statements >           ::= < statement >
+                           | ''
+
+< statement >
+
+< variable-def >
+< function-def >
+                           

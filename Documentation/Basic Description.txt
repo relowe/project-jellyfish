@@ -1,2 +1,2 @@
-// THIS IS A BASIC DESCRIPTION OF WHAT THE CODE SHOULD DO 
+// This is a basic description of what the code should do
 
