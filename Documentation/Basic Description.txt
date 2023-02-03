@@ -108,6 +108,8 @@ end function
 *Variables CANNOT change type, and types CANNOT be coerced
 ** Number types CAN start with just a period
 
+*For now, TEXT has no mathematical functionality
+
 """
 < name > : array [ < size > ] of < number | text >
 < name > : array [ < size > , < size > ..., < size > ] of < number | text >
@@ -166,12 +168,18 @@ Priority   | Symbol     | Description
 ##   BUILT-IN FUNCTIONALITY   ##
 ################################
 
+length(< array name >) ## does NOT allow 'length(< text name >)'
+lower_bound(< array name >)
+upper_bound(< array name >)
+
+""" STANDARD LIBRARY FUNCTIONS """
 input_number()
 input_text()
 display( < text > , < text > , ... )
-len(< array name >) ## does NOT allow 'len(< text name >)'
+display_line( < text > , < text > , ... )
 
-""" STANDARD LIBRARY FUNCTIONS """
+wait(< number > , < time_unit >)
+
 ## TRIG ##
 sin( < number > )
 cos( < number > )
@@ -187,6 +195,11 @@ atan( < number > )
 round( < number > )
 floor( < number > )
 ceil( < number > )
+
+## RANDOM ##
+random_number()
+random_number(< min > , < max >)
+
 
 
 ###########################
