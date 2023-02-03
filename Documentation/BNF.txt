@@ -1,17 +1,17 @@
 // This will hold the BNF for the language
 
-< CODE >                 ::= 'definitions' < definitions >
+< CODE >                 ::= 'definitions' < definitions > < program >
                            | < program >
 
 < definitions >          ::= < definition > < definitions >
-                           | 'end definitions'
+                           | 'end' 'definitions'
 
-< definition >           ::= 'function' < function-dec >
+< definition >           ::= < function-dec >
                            | < variable-dec >
 
-< program >              ::= 'program' < statements > 'end program'
+< program >              ::= 'program' < statements > 'end' 'program'
 
-< statements >           ::= < statement >
+< statements >           ::= < statement > < statements >
                            | ''
 
 < statement >            ::= < assignment >
@@ -21,6 +21,123 @@
                            | < repeat >
                            | < resolvable >
 
-< variable-dec >
-< function-dec >
-                           
+< variable-dec >         ::= < id > ':' < variable-type > < var-dec-equal >
+                           | < id > ',' < variable-dec >
+
+< var-dec-equal >        ::= '=' < resolvable >
+                           | ''
+
+< variable-type >        ::= < basic-type >
+                           | 'array' '[' < bounds > ']' 'of' < basic-type >
+
+< basic-type >           ::= 'number'
+                           | 'text'
+
+< bounds >               ::= < int_lit >
+                           | < int_lit > ',' < bounds >
+
+< function-dec >         ::= ['function'] < id > '(' < fun-dec-args > ')' 
+                              'returns' < fun-return-type > < statements > 
+                              'end' 'function'
+
+< fun-dec-args >         ::= < fun-dec-arg >
+                           | < fun-dec-arg > ',' < fun-dec-args >
+
+< fun-dec-arg >          ::= < id > ':' < basic-type >
+                           | < id > ':' 'array' 'of' < basic-type>
+
+< fun-return-type >      ::= 'nothing'
+                           | < basic-type >
+
+< assignment >           ::= < id > '=' < resolvable >
+
+< while >                ::= 'while' < condition > < statements > 'end' 'while'
+
+< if >                   ::= 'if' < condition > < statements > < if2 >
+
+< if2 >                  ::= 'end' 'if'
+                           | 'else' < if >
+                           | 'else' < statements > 'end' 'if'
+
+< repeat >               ::= 'repeat' < statements > 'end' 'repeat'
+                           | 'repeat' < int_lit > 'times' < statements > 'end' 'repeat'
+
+< condition >            ::= < resolvable > '>' < resolvable >
+                           | < resolvable > '<' < resolvable >
+                           | < resolvable > '>=' < resolvable >
+                           | < resolvable > '<=' < resolvable >
+                           | < resolvable > '=' < resolvable >
+                           | < resolvvable > '!=' < resolvable >
+                           | < resolvable >
+
+< resolvable >           ::= < orable >
+
+< orable >               ::= < andable > 'or' < orable >
+                           | < andable >
+
+< andable >              ::= < bit-orable > 'and' < andable >
+                           | < bit-orable >
+
+< bit-orable >           ::= < bit-xorable > '|' < bit-orable >
+                           | < bit-xorable >
+
+< bit-xorable >          ::= < bit-andable > '^' < bit-xorable >
+                           | < bit-andable >
+
+< bit-andable >          ::= < bit-shiftable > '&' < bit-andable >
+                           | < bit-shiftable > 
+
+< bit-shiftable >        ::= < expression > 'SL' < bit-shiftable >
+                           | < expression > 'SR' < bit-shiftable >
+                           | < expression >
+
+< expression >           ::= < term > '+' < expression >
+                           | < term > '-' < expression >
+                           | < term >
+
+< term >                 ::= < factor > '*' < term >
+                           | < factor > '/' < term >
+                           | < factor > '%' < term >
+                           | < factor >
+
+< factor >               ::= < exponent > '^' < factor >
+                           | '-' < factor >
+                           | < exponent > 
+
+< exponent >             ::= 'not' < exponent >
+                           | '(' < resolvable > ')'
+                           | < number_lit >
+                           | < text_lit >
+                           | < reference >
+                           | < call >
+
+< number_lit >           ::= < float_lit >
+                           | < int_lit >
+
+< float_lit >            ::= < int_lit > '.' < int_lit >
+                           | '.' < int_lit >
+
+< int_lit >              ::= < DIGIT > < int_lit >
+                           | ''
+
+< text_lit >             ::= '"' < CHARACTERS > '"'
+
+< reference >            ::= < id >
+                           | < id > '[' < index > ']'
+
+< index >                ::= < resolvable >
+                           | < resolvable > ',' < index >
+
+< call >                 ::= < id > '(' < arg-list > ')'
+                           | < id > '(' ')'
+
+< arg-list >             ::= < resolvable > ',' < arg-list >
+                           | < resolvable >
+
+< id >                   ::= < LETTER > < id2 >
+                           | '_' < id2 >
+
+< id2 >                  ::= < LETTER > < id2 >
+                           | < DIGIT > < id2 >
+                           | '_' < id2 >
+                           | ''
