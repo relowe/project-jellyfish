@@ -6,16 +6,21 @@
 < definitions >          ::= < definition > < definitions >
                            | 'end definitions'
 
-< definition >           ::= 'function' < function-def >
-                           | < variable-def >
+< definition >           ::= 'function' < function-dec >
+                           | < variable-dec >
 
 < program >              ::= 'program' < statements > 'end program'
 
 < statements >           ::= < statement >
                            | ''
 
-< statement >
+< statement >            ::= < assignment >
+                           | < variable-dec >
+                           | < while >
+                           | < if >
+                           | < repeat >
+                           | < resolvable >
 
-< variable-def >
-< function-def >
+< variable-dec >
+< function-dec >
                            
