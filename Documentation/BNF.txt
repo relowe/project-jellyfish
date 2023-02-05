@@ -8,10 +8,14 @@
 
 < definition >           ::= < function-dec >
                            | < variable-dec >
+                           | < struct-dec >
 
 < program >              ::= 'program' < statements > 'end' 'program'
 
 < statements >           ::= < statement > < statements >
+                           | ''
+
+< fun-statements >       ::= < fun-statement > < fun-statements >
                            | ''
 
 < statement >            ::= < assignment >
@@ -20,6 +24,12 @@
                            | < if >
                            | < repeat >
                            | < resolvable >
+
+< fun-statement >        ::= 'return' < return-value >
+                           | < statement >
+
+< return-value >         ::= < resolvable >
+                           | ''
 
 < variable-dec >         ::= < id > ':' < variable-type > < var-dec-equal >
                            | < id > ',' < variable-dec >
@@ -37,17 +47,22 @@
                            | < int_lit > ',' < bounds >
 
 < function-dec >         ::= ['function'] < id > '(' < fun-dec-args > ')' 
-                              'returns' < fun-return-type > < statements > 
+                              'returns' < fun-return-type > < fun-statements > 
                               'end' 'function'
 
 < fun-dec-args >         ::= < fun-dec-arg >
                            | < fun-dec-arg > ',' < fun-dec-args >
 
 < fun-dec-arg >          ::= < id > ':' < basic-type >
-                           | < id > ':' 'array' 'of' < basic-type>
+                           | < id > ':' 'array' 'of' < basic-type >
 
 < fun-return-type >      ::= 'nothing'
                            | < basic-type >
+
+< struct-dec >           ::= 'structure' < id > < struct-items > 'end' 'structure'
+
+< struct-items >         ::= < variable-dec > < struct-items >
+                           | ''
 
 < assignment >           ::= < id > '=' < resolvable >
 

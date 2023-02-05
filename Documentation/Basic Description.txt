@@ -15,7 +15,7 @@
 4 - No confusing sigils
 
 ##################################
-##           STRUCTURES         ##
+##           STRUCTURE          ##
 ##################################
 
 All lines in this program are per-line (like python)
@@ -125,9 +125,28 @@ end function
 This is how you index the array
 
 """
-len(< array name >)
+length(< array name >)
 """
 Built-in function to get array length
+
+###############################
+##     CUSTOM STRUCTURES     ##
+###############################
+
+"""
+structure < name > 
+   < name > : < type > 
+   < name > : < type > = default value
+end structure
+"""
+
+Structures will be treated as tuples, containg all of their elements
+ in contiguous chunks of memory.
+
+"""
+x : < structure > = a, b, c 
+display(x.a, x.b, x.c)
+"""
 
 
 #################################
@@ -203,7 +222,7 @@ random_number(< min > , < max >)
 
 
 ###########################
-##    OTHER NOTES        ##
+##      OTHER NOTES      ##
 ###########################
 
  - Included support for the following special characters:

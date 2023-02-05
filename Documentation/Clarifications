@@ -1,0 +1,35 @@
+1) Verify all of the operators that should be included
+    (and the keywords associated with them)
+
+2) Verify the array setup and keywords.
+  - Also how arrays should look in function calls
+  - Also if multi-dimensional arrays are good (and limit)
+
+3) Clarification for the "wait" function:
+  - wait(4s) or wait(4, 's')
+
+4) Boolean treatment of strings and numbers.
+
+5) Syntax for creating a structure?
+  - How to define, initialize a structure
+  - Also how to retrieve an element from a structure
+
+6) Should TEXT have any mathematical functionality?
+
+7) Should NUMBER auto-round when displaying?
+   - If so, how many sig-figs should be checked for. (7-15)
+
+8) Any special cases for the repeat command?
+   - Should "repeat n times" take arguments?
+   - Should there be a "repeat for all x in y"
+
+9) Special character support? Or just stick with standard ASCII?
+  - Shoud there be any break characters?
+
+10) Special control keywords?
+  - break, exit
+
+11) Allow for array literals?
+  - "x : array [3] of numbers = [1, 2, 3]"
+
+12) 'length' function. Should it work for TEXT, or only arrays?
