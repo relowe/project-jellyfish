@@ -1,35 +1,83 @@
 1) Verify all of the operators that should be included
     (and the keywords associated with them)
 
+# and, or, xor as bitwise (make them all lowercase)
+# in conditional (ignore bitwise or $ignore logical$)
+# comparators return 1 or 0
+# do not do inc/dec
+
 2) Verify the array setup and keywords.
   - Also how arrays should look in function calls
   - Also if multi-dimensional arrays are good (and limit)
+  
+# array sizes should specify bound
+# array [4] of number ==== array [1 to 4] of number
+# array [1 to 3, 1 to 10] of text
 
 3) Clarification for the "wait" function:
   - wait(4s) or wait(4, 's')
 
+# its gonna be wait(4s)
+
+
 4) Boolean treatment of strings and numbers.
+
+# no
+# all conditions need a comparison
+# strings CAN be compared, compare them lexiographically (in alphebetical order)
+# strings coerse everything into a string
 
 5) Syntax for creating a structure?
   - How to define, initialize a structure
   - Also how to retrieve an element from a structure
 
+# function <name> (x : 'changable' Person ) <<< this passes a thing by reference
+# let everything be changable << can be passed 
+# dot syntax is fine, specification is fine
+# specification needs curly brackes around it
+
 6) Should TEXT have any mathematical functionality?
+
+# string concatination, and thats about it
+# string can be indexed, but is immutable
 
 7) Should NUMBER auto-round when displaying?
    - If so, how many sig-figs should be checked for. (7-15)
+
+# 6 sig figs (if they are all 0 or 9 round)
 
 8) Any special cases for the repeat command?
    - Should "repeat n times" take arguments?
    - Should there be a "repeat for all x in y"
 
+# variable are allowed
+# yeah for for all
+
 9) Special character support? Or just stick with standard ASCII?
   - Shoud there be any break characters?
 
+# ASCII, don't worry about unicode, throw an error ("can only coinitain printable ascii characters")
+# the shown break characters are good
+
 10) Special control keywords?
   - break, exit
+  
+# yeah to break, quit to quit the program
 
 11) Allow for array literals?
-  - "x : array [3] of numbers = [1, 2, 3]"
+  - "x : array [3] of numbers = {1, 2, 3}"
+
+# yes, comma separated list with curly brackets
+# inferred size when defining an array on the same line {{1, 2}, {1, 2}}
+# allow for dangling commas
 
 12) 'length' function. Should it work for TEXT, or only arrays?
+
+# yes
+# for arrays, length always returns the number of elements in the container (in total)
+# also add 'dimensions' to return an array of dimentions for an array/TEXT
+
+
+## MAKE EVERYTHING LOWERCASE ##
+## LEXEME STILL NEEDS TO KNOW CASE SENSITIVITY ##
+## ALLOW '+' TO GET ABS() OF THE VALUE ##
