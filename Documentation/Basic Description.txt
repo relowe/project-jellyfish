@@ -138,8 +138,7 @@ end function
 *Arrays start indexing at 1, and can be multi-dimensional
 *When expecting an array from a function definition you can use:
  """function < name > ( < name > : array of < number | text > ) returns ... """
-*Allow for setting custom bounds with the 'to' keyword (array [2 to 5] of numbers)
-**Allow use of the singular or plural (number or numbers, text)
+*Allow for setting custom bounds with the 'to' keyword (array [2 to 5] of number)
 
 """
 < name >[< index >]
@@ -212,7 +211,8 @@ Priority   | Symbol     | Description
 ==========================================
 14         | =          | Assignment
 
-** Logical statements will be ignored in conditionals (only bitwise allowed)
+** The comprarables (<, >, =, !=, <=, >=) and the logicals (and, or)
+    can only be applied to conditional statements
 
 
 

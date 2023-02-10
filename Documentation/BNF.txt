@@ -15,17 +15,12 @@
 < structure-args >       ::= < structure-arg > < structure-args >
                            | ''
 
-< structure-arg >        ::= < id > ':' < basic-type > < structure-default >
-
-< structure-default >    ::= '=' < int-lit >
-                           | '=' < float-lit >
-                           | '=' < text-lit >
-                           | ''
+< structure-arg >        ::= < variable-def >
 
 < global-defs >          ::= < global-def > < global-defs >
                            | ''
 
-< global-def >           ::= < id > ':' < variable-type > '=' < resolvable >
+< global-def >           ::= < ids > ':' < variable-type > '=' < resolvable >
 
 < function-defs >        ::= < function-def > < function-defs >
                            | ''
@@ -45,7 +40,6 @@
 < fun-arg-type >         ::= < basic-type >
                            | 'array' 'of' < basic-type >
                            | 'array' '[' < bounds > ']' 'of' < basic-type >
-                           | < id > // this is for structures
 
 < fun-return-type >      ::= 'nothing'
                            | < basic-type >
@@ -80,27 +74,31 @@
 < loop-statement >       ::= 'break'
                            | < statement >
 
-< variable-def >         ::= < id > ':' < variable-type > < var-def-equal >
-                           | < id > ',' < variable-def >
+< variable-def >         ::= < ids > ':' < variable-type > < var-def-equal >
+
+< ids >                  ::= < id > ',' < ids >
+                           | < id >
+                           | ''
 
 < var-def-equal >        ::= '=' < resolvable >
                            | ''
 
 < variable-type >        ::= < basic-type >
                            | 'array' '[' < bounds > ']' 'of' < basic-type >
-                           | < id > // for structures
+                           | 'array' 'of' < basic-type >
 
 < basic-type >           ::= 'number'
                            | 'text'
+                           | < id > // for structures
 
 < bounds >               ::= < bound > 
                            | < bound > ',' < bounds >
                            | ''
 
-< bound >                ::= < int-lit >
-                           | < int-lit > 'to' < int-lit >
+< bound >                ::= < resolvable >
+                           | < resolvable > 'to' < resolvable >
 
-< assignment >           ::= < id > '=' < resolvable >
+< assignment >           ::= < reference > '=' < resolvable >
 
 < while >                ::= 'while' < condition > < loop-statements > 'end' 'while'
 
@@ -117,7 +115,10 @@
 < condition >            ::= < logic-andable > 'or' < condition >           
                            | < logic-andable >
 
-< logic-andable >        ::= < comparable > 'and' < logic-andable >
+< logic-andable >        ::= < logic-paren > 'and' < logic-andable >
+                           | < logic-paren >
+
+< logic-paren >          ::= '(' < condition > ')'
                            | < comparable >
 
 < comparable >           ::= < resolvable > '>' < resolvable >
