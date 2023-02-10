@@ -3,27 +3,55 @@
 < CODE >                 ::= 'definitions' < definitions > < program >
                            | < program >
 
-< definitions >          ::= < definition > < definitions >
-                           | 'end' 'definitions'
+< definitions >          ::= < structure-defs > < global-defs > < function-defs > 
+                             'end' 'definitions'
 
-< definition >           ::= < function-dec >
-                           | < variable-dec >
-                           | < struct-dec >
-
-< program >              ::= 'program' < statements > 'end' 'program'
-
-< statements >           ::= < statement > < statements >
+< structure-defs >       ::= < structure-def > < structure-defs >
                            | ''
+
+< structure-def >        ::= 'structure' < id > < strucutre-arg > < structure-args > 
+                             'end' 'structure'
+
+< structure-args >       ::= < structure-arg > < structure-args >
+                           | ''
+
+< structure-arg >        ::= < id > ':' < basic-type > < structure-default >
+
+< structure-default >    ::= '=' < int-lit >
+                           | '=' < float-lit >
+                           | '=' < text-lit >
+                           | ''
+
+< global-defs >          ::= < global-def > < global-defs >
+                           | ''
+
+< global-def >           ::= < id > ':' < variable-type > '=' < resolvable >
+
+< function-defs >        ::= < function-def > < function-defs >
+                           | ''
+
+< function-def >         ::= 'function' < id > '(' < fun-def-args > ')' 
+                              'returns' < fun-return-type > < fun-statements > 
+                              'end' 'function'
+
+< fun-def-args >         ::= < fun-def-arg >
+                           | < fun-def-arg > ',' < fun-def-args >
+
+< fun-def-arg >          ::= < id > ':' < changable > < fun-arg-type >
+
+< changable >            ::= 'changable'
+                           | ''
+
+< fun-arg-type >         ::= < basic-type >
+                           | 'array' 'of' < basic-type >
+                           | 'array' '[' < bounds > ']' 'of' < basic-type >
+                           | < id > // this is for structures
+
+< fun-return-type >      ::= 'nothing'
+                           | < basic-type >
 
 < fun-statements >       ::= < fun-statement > < fun-statements >
                            | ''
-
-< statement >            ::= < assignment >
-                           | < variable-dec >
-                           | < while >
-                           | < if >
-                           | < repeat >
-                           | < resolvable >
 
 < fun-statement >        ::= 'return' < return-value >
                            | < statement >
@@ -31,79 +59,87 @@
 < return-value >         ::= < resolvable >
                            | ''
 
-< variable-dec >         ::= < id > ':' < variable-type > < var-dec-equal >
-                           | < id > ',' < variable-dec >
+==================================================================================
 
-< var-dec-equal >        ::= '=' < resolvable >
+< program >              ::= 'program' < statements > 'end' 'program'
+
+< statements >           ::= < statement > < statements >
+                           | ''
+
+< statement >            ::= < assignment >
+                           | < variable-def >
+                           | < while >
+                           | < if >
+                           | < repeat >
+                           | < resolvable >
+                           | 'quit'
+
+< loop-statements >      ::= < loop-statement > < loop-statements >
+                           | ''
+
+< loop-statement >       ::= 'break'
+                           | < statement >
+
+< variable-def >         ::= < id > ':' < variable-type > < var-def-equal >
+                           | < id > ',' < variable-def >
+
+< var-def-equal >        ::= '=' < resolvable >
                            | ''
 
 < variable-type >        ::= < basic-type >
                            | 'array' '[' < bounds > ']' 'of' < basic-type >
+                           | < id > // for structures
 
 < basic-type >           ::= 'number'
                            | 'text'
 
-< bounds >               ::= < int_lit >
-                           | < int_lit > ',' < bounds >
-
-< function-dec >         ::= ['function'] < id > '(' < fun-dec-args > ')' 
-                              'returns' < fun-return-type > < fun-statements > 
-                              'end' 'function'
-
-< fun-dec-args >         ::= < fun-dec-arg >
-                           | < fun-dec-arg > ',' < fun-dec-args >
-
-< fun-dec-arg >          ::= < id > ':' < basic-type >
-                           | < id > ':' 'array' 'of' < basic-type >
-
-< fun-return-type >      ::= 'nothing'
-                           | < basic-type >
-
-< struct-dec >           ::= 'structure' < id > < struct-items > 'end' 'structure'
-
-< struct-items >         ::= < variable-dec > < struct-items >
+< bounds >               ::= < bound > 
+                           | < bound > ',' < bounds >
                            | ''
+
+< bound >                ::= < int-lit >
+                           | < int-lit > 'to' < int-lit >
 
 < assignment >           ::= < id > '=' < resolvable >
 
-< while >                ::= 'while' < condition > < statements > 'end' 'while'
+< while >                ::= 'while' < condition > < loop-statements > 'end' 'while'
 
-< if >                   ::= 'if' < condition > < statements > < if2 >
+< if >                   ::= 'if' < condition > < loop-statements > < if2 >
 
 < if2 >                  ::= 'end' 'if'
                            | 'else' < if >
-                           | 'else' < statements > 'end' 'if'
+                           | 'else' < loop-statements > 'end' 'if'
 
-< repeat >               ::= 'repeat' < statements > 'end' 'repeat'
-                           | 'repeat' < int_lit > 'times' < statements > 'end' 'repeat'
+< repeat >               ::= 'repeat' < loop-statements > 'end' 'repeat'
+                           | 'repeat' < int-lit > 'times' < loop-statements > 'end' 'repeat'
+                           | 'repeat' 'for' 'all' < id > 'in' < id > < loop-statements > 'end' 'repeat'
 
-< condition >            ::= < resolvable > '>' < resolvable >
+< condition >            ::= < logic-andable > 'or' < condition >           
+                           | < logic-andable >
+
+< logic-andable >        ::= < comparable > 'and' < logic-andable >
+                           | < comparable >
+
+< comparable >           ::= < resolvable > '>' < resolvable >
                            | < resolvable > '<' < resolvable >
                            | < resolvable > '>=' < resolvable >
                            | < resolvable > '<=' < resolvable >
                            | < resolvable > '=' < resolvable >
-                           | < resolvvable > '!=' < resolvable >
-                           | < resolvable >
+                           | < resolvable > '!=' < resolvable >
 
-< resolvable >           ::= < orable >
+< resolvable >           ::= < bit-orable >
 
-< orable >               ::= < andable > 'or' < orable >
-                           | < andable >
-
-< andable >              ::= < bit-orable > 'and' < andable >
-                           | < bit-orable >
-
-< bit-orable >           ::= < bit-xorable > '|' < bit-orable >
+< bit-orable >           ::= < bit-xorable > 'bit-or' < bit-orable >
                            | < bit-xorable >
 
-< bit-xorable >          ::= < bit-andable > '^' < bit-xorable >
+< bit-xorable >          ::= < bit-andable > 'bit-xor' < bit-xorable >
                            | < bit-andable >
 
-< bit-andable >          ::= < bit-shiftable > '&' < bit-andable >
+< bit-andable >          ::= < bit-shiftable > 'bit-and' < bit-andable >
                            | < bit-shiftable > 
 
-< bit-shiftable >        ::= < expression > 'SL' < bit-shiftable >
-                           | < expression > 'SR' < bit-shiftable >
+< bit-shiftable >        ::= < expression > 'bit-sl' < bit-shiftable >
+                           | < expression > 'bit-sr' < bit-shiftable >
                            | < expression >
 
 < expression >           ::= < term > '+' < expression >
@@ -117,42 +153,54 @@
 
 < factor >               ::= < exponent > '^' < factor >
                            | '-' < factor >
-                           | < exponent > 
+                           | < exponent >
 
-< exponent >             ::= 'not' < exponent >
+< bit-notable >          ::= 'bit_not' < exponent >
+                           | < exponent >
+
+< exponent >             ::= '+' < exponent >
                            | '(' < resolvable > ')'
-                           | < number_lit >
-                           | < text_lit >
+                           | < number-lit >
+                           | < text-lit >
                            | < reference >
                            | < call >
+                           | < array-struct-lit >
 
-< number_lit >           ::= < float_lit >
-                           | < int_lit >
+< array-struct-lit >     ::= '{' < array-struct-items > '}'
 
-< float_lit >            ::= < int_lit > '.' < int_lit >
-                           | '.' < int_lit >
+< array-struct-items >   ::= < resolvable > ',' < array-struct-items >
+                           | < resolvable >
+                           | '' 
 
-< int_lit >              ::= < DIGIT > < int_lit >
-                           | ''
+< number-lit >           ::= < float-lit >
+                           | < int-lit >
 
-< text_lit >             ::= '"' < CHARACTERS > '"'
+< float-lit >            ::= < int-lit > '.' < int-lit >
+                           | '.' < int-lit >
+
+< int-lit >              ::= < DIGITS >
+
+< text-lit >             ::= '"' < CHARACTERS > '"'
 
 < reference >            ::= < id >
                            | < id > '[' < index > ']'
+                           | < id >'.'< id >
 
 < index >                ::= < resolvable >
                            | < resolvable > ',' < index >
+                           | ''
 
 < call >                 ::= < id > '(' < arg-list > ')'
                            | < id > '(' ')'
 
 < arg-list >             ::= < resolvable > ',' < arg-list >
                            | < resolvable >
+                           | ''
 
 < id >                   ::= < LETTER > < id2 >
-                           | '_' < id2 >
+                           | '-' < id2 >
 
 < id2 >                  ::= < LETTER > < id2 >
                            | < DIGIT > < id2 >
-                           | '_' < id2 >
+                           | '-' < id2 >
                            | ''

@@ -14,6 +14,8 @@
 
 4 - No confusing sigils
 
+5 - EVERYTHING WILL BE LOWERCASE!!! (but the lexeme still needs to remember case)
+
 ##################################
 ##           STRUCTURE          ##
 ##################################
@@ -87,7 +89,8 @@ repeat for all (x) in (y)
   ...
 end repeat
 
-
+***Conditionals are ALWAYS required to have a comparison of some sort
+***'break' and 'quit' are both good keywords for breaking a loop/program
 
 #########################
 ##     FUNCTIONS       ##
@@ -122,16 +125,21 @@ end function
 *Variables CANNOT change type, and types CANNOT be coerced
 ** Number types CAN start with just a period
 
-*For now, TEXT has no mathematical functionality
+*For now, TEXT only allows for addition, but coerces everything into TEXT
+*TEXT can also be compared, done lexiographically
+*TEXT can be indexed in the same way as arrays
 
 """
 < name > : array [ < size > ] of < number | text >
 < name > : array [ < size > , < size > ..., < size > ] of < number | text >
+< name > : array [ < start_index > 'to' < end_index > , ... ] of < number | text >
 """
 
 *Arrays start indexing at 1, and can be multi-dimensional
 *When expecting an array from a function definition you can use:
  """function < name > ( < name > : array of < number | text > ) returns ... """
+*Allow for setting custom bounds with the 'to' keyword (array [2 to 5] of numbers)
+**Allow use of the singular or plural (number or numbers, text)
 
 """
 < name >[< index >]
@@ -139,9 +147,18 @@ end function
 This is how you index the array
 
 """
-length(< array name >)
+< name > : array of numbers = { 1, 2, 3, 4, ... }
 """
-Built-in function to get array length
+Arrays can also be instantiated (this means they won't need the size definition)
+
+
+"""
+length(< array name >)
+dimensions(< array name >)
+"""
+Built-in function to get array length (the total number of elements)
+Built-in function to get dimensions (an array of each dimension)
+  ex: '{5,2,4}' for a 5 by 2 by 4 array
 
 ###############################
 ##     CUSTOM STRUCTURES     ##
@@ -170,28 +187,29 @@ display(x.a, x.b, x.c)
 Priority   | Symbol     | Description 
 ======================================
 1          | ()         | Parenthesis
-1.5        | not        | bitwise not
-2          | !          | Not (logical)
-3          | -          | Negative
-3          | ^          | Pow 
-4          | *          | Multipy 
-4          | /          | Divide 
-4          | %          | Modulo
-5          | +          | Add 
-5          | -          | Subtract 
-6          | sl         | Shift Left
-6          | sr         | Shift Right
-7          | <          | Less Than
-7          | >          | Greater Than 
-7          | <=         | Less Than or Equal 
-7          | >=         | Greater Than or Equal 
-(8) 7      | =          | Equal
-(8) 7      | !=         | Not Equal 
-9          | and        | Bitwise And
-10         | xor        | Bitwise XOR
-11         | or         | Bitwise Or 
-12         | &&         | And (logical)
-13         | ||         | Or (logical)
+2          | +          | Absolute value
+3          | bit_not    | bitwise not
+4          | -          | Negative
+4          | ^          | Pow 
+5          | *          | Multipy 
+5          | /          | Divide 
+5          | %          | Modulo
+6          | +          | Add 
+6          | -          | Subtract 
+7          | bit_sl     | Shift Left
+7          | bit_sr     | Shift Right
+8          | bit_and    | Bitwise And
+9          | bit_xor    | Bitwise XOR
+10         | bit_or     | Bitwise Or 
+11         | <          | Less Than
+11         | >          | Greater Than 
+11         | <=         | Less Than or Equal 
+11         | >=         | Greater Than or Equal 
+11         | =          | Equal
+11         | !=         | Not Equal 
+12         | and        | And (logical)
+13         | or         | Or (logical)
+==========================================
 14         | =          | Assignment
 
 ** Logical statements will be ignored in conditionals (only bitwise allowed)
@@ -202,7 +220,9 @@ Priority   | Symbol     | Description
 ##   BUILT-IN FUNCTIONALITY   ##
 ################################
 
-length(< array name >) ## does NOT allow 'length(< text name >)'
+length(< array name >)
+length(< text name >)
+dimensions(< array name >)
 lower_bound(< array name >)
 upper_bound(< array name >)
 
@@ -212,7 +232,9 @@ input_text()
 display( < text > , < text > , ... )
 display_line( < text > , < text > , ... )
 
-wait(< number > , < time_unit >)
+wait(< number >< time_unit >)
+wait(< name >< time_unit >)
+* this will need some custom processing
 
 ## TRIG ##
 sin( < number > )
@@ -254,3 +276,10 @@ random_number(< min > , < max >)
  - This language is forgiving and will allow for dangling commas
   EX: x : array [4] of number = { 1, 2, 3, 4, }
                                             ^ this is fine
+
+ - When outputing NUMBERs, try to catch floating points that
+    are integers (ex: 5.0000000135 >> 5), with 6 decimal places
+    of accuracy
+
+ - ASCII is the only allowed character set, all other characters
+    should throw an error ("can only contain printable ASCII characters")
