@@ -28,6 +28,10 @@ The global program is defined in two sections:
 """
   definitions
     ...
+    (structure section)
+    (global section)
+    (function section)
+    ...
   end definitions
   program
     ...
@@ -79,6 +83,9 @@ repeat < number > times
   ...
 end repeat
 
+repeat for all (x) in (y)
+  ...
+end repeat
 
 
 
@@ -92,7 +99,14 @@ function < name > ( <args> ) returns < number | text | nothing >
 end function
 """
 
- - All arguments are passed by-value (no references, a direct copy needs to be made)
+ - All arguments are passed by-value by default
+ - Using the keyword "changable" changes this syntax to use something by reference
+
+"""
+function < name > ( < name > : 'changable' < type or struct > ... )
+  ...
+end function
+"""
 
 
 ##############################
@@ -144,7 +158,7 @@ Structures will be treated as tuples, containg all of their elements
  in contiguous chunks of memory.
 
 """
-x : < structure > = a, b, c 
+x : < structure > = { a, b, c, ... } 
 display(x.a, x.b, x.c)
 """
 
@@ -156,9 +170,8 @@ display(x.a, x.b, x.c)
 Priority   | Symbol     | Description 
 ======================================
 1          | ()         | Parenthesis
-( postfix would go here )
-( prefix and "bitwise not" would go here )
-2          | not        | Not 
+1.5        | not        | bitwise not
+2          | !          | Not (logical)
 3          | -          | Negative
 3          | ^          | Pow 
 4          | *          | Multipy 
@@ -166,20 +179,22 @@ Priority   | Symbol     | Description
 4          | %          | Modulo
 5          | +          | Add 
 5          | -          | Subtract 
-6          | SL         | Shift Left
-6          | SR         | Shift Right
+6          | sl         | Shift Left
+6          | sr         | Shift Right
 7          | <          | Less Than
 7          | >          | Greater Than 
 7          | <=         | Less Than or Equal 
 7          | >=         | Greater Than or Equal 
 (8) 7      | =          | Equal
 (8) 7      | !=         | Not Equal 
-9          | &          | Bitwise And
-10         | ^          | Bitwise XOR
-11         | |          | Bitwise Or 
-12         | and        | And 
-13         | or         | Or 
+9          | and        | Bitwise And
+10         | xor        | Bitwise XOR
+11         | or         | Bitwise Or 
+12         | &&         | And (logical)
+13         | ||         | Or (logical)
 14         | =          | Assignment
+
+** Logical statements will be ignored in conditionals (only bitwise allowed)
 
 
 
@@ -235,3 +250,7 @@ random_number(< min > , < max >)
    0 = False
    1 = True (by default)
    !0 = True (implied)
+
+ - This language is forgiving and will allow for dangling commas
+  EX: x : array [4] of number = { 1, 2, 3, 4, }
+                                            ^ this is fine
