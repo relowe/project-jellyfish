@@ -32,9 +32,9 @@
 < fun-def-args >         ::= < fun-def-arg >
                            | < fun-def-arg > ',' < fun-def-args >
 
-< fun-def-arg >          ::= < id > ':' < changable > < fun-arg-type >
+< fun-def-arg >          ::= < id > ':' < changeable > < fun-arg-type >
 
-< changable >            ::= 'changable'
+< changeable >            ::= 'changeable'
                            | ''
 
 < fun-arg-type >         ::= < basic-type >
@@ -66,7 +66,10 @@
                            | < if >
                            | < repeat >
                            | < resolvable >
+                           | < unlink >
                            | 'quit'
+
+< unlink >               ::= 'unlink' < reference >
 
 < loop-statements >      ::= < loop-statement > < loop-statements >
                            | ''
@@ -86,6 +89,7 @@
 < variable-type >        ::= < basic-type >
                            | 'array' '[' < bounds > ']' 'of' < basic-type >
                            | 'array' 'of' < basic-type >
+                           | 'link' 'to' < basic-type >
 
 < basic-type >           ::= 'number'
                            | 'text'
@@ -99,6 +103,7 @@
                            | < resolvable > 'to' < resolvable >
 
 < assignment >           ::= < reference > '=' < resolvable >
+                           | 'link' 'to' < reference >
 
 < while >                ::= 'while' < condition > < loop-statements > 'end' 'while'
 
@@ -127,6 +132,8 @@
                            | < resolvable > '<=' < resolvable >
                            | < resolvable > '=' < resolvable >
                            | < resolvable > '!=' < resolvable >
+                           | < resolvable > 'is' 'linked'
+                           | < resolvable > 'is' 'not' 'linked'
 
 < resolvable >           ::= < bit-orable >
 
@@ -149,7 +156,7 @@
 
 < term >                 ::= < factor > '*' < term >
                            | < factor > '/' < term >
-                           | < factor > '%' < term >
+                           | < factor > 'mod' < term >
                            | < factor >
 
 < factor >               ::= < exponent > '^' < factor >
@@ -182,6 +189,7 @@
 < int-lit >              ::= < DIGITS >
 
 < text-lit >             ::= '"' < CHARACTERS > '"'
+                           | "'" < CHARACTERS > "'"
 
 < reference >            ::= < id >
                            | < id > '[' < index > ']'
