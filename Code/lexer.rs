@@ -5,6 +5,7 @@ use std::io::Read;
 #[derive(Debug, PartialEq, Clone)]
 enum TokenType {
     TEXT(String),
+    ID(String),
     NUMBER(f64),
     ADD,       // +
     SUB,       // -
@@ -30,7 +31,7 @@ enum TokenType {
     LPAREN,    // (
     RPAREN,    // )
     COMMA,     // ,
-    CHANGABLE, // changable
+    CHANGEABLE, // changeable
     ARRAY,     // array
     OF,        // of
     LBRACKET,  // [
@@ -42,9 +43,11 @@ enum TokenType {
     TO,        // to
     UNLINK,    // unlink
     BREAK,     // break
+    CONTINUE,  // continue
     NUMTYPE,   // number
-    TXTTYPE,   // text
+    TEXTTYPE,  // text
     IF,        // if
+    THEN,      // then
     ELSE,      // else
     WHILE,     // while
     REPEAT,    // repeat
@@ -53,12 +56,12 @@ enum TokenType {
     ALL,       // all
     AND,       // and
     OR,        // or
-    BOR,       // bit-or
-    BXOR,      // bit-xor
-    BAND,      // bit-and
-    BSL,       // bit-sl
-    BSR,       // bit-sr
-    BNOT,      // bit-not
+    BOR,       // bit_or
+    BXOR,      // bit_xor
+    BAND,      // bit_and
+    BSL,       // bit_sl
+    BSR,       // bit_sr
+    BNOT,      // bit_not
     LCURLY,    // {
     RCURLY,    // }
     PERIOD,    // .
@@ -117,6 +120,11 @@ impl Lexer {
     // Consumes a single character from the lexer's raw text
     // Throws an error if non-ASCII characters are consumed
     pub fn consume(&mut self) -> Result<char, &'static str> {
+        if self.raw_text.len() < 1 {
+            self.curr_char = '\0';
+            return Ok(self.curr_char);
+        }
+
         self.curr_char = self.raw_text.pop().unwrap_or('\0');
         self.curr_col += 1;
         if self.curr_char == '\n' {
@@ -159,10 +167,14 @@ impl Lexer {
         if self.lex_single()? {
             Ok(self.curr_token.clone())
         }
+        else if self.lex_multi_fixed()? {
+            Ok(self.curr_token.clone())
+        }
         else if self.lex_other()? {
             Ok(self.curr_token.clone())
         }
         else {
+            self.curr_lex = self.curr_char.to_string();
             self.curr_token = self.create_token(self.curr_row, self.curr_col, TokenType::INVALID);
             self.consume()?;
             Ok(self.curr_token.clone())
@@ -188,8 +200,6 @@ impl Lexer {
             ']' => TokenType::RBRACKET,
             ',' => TokenType::COMMA,
             '.' => TokenType::PERIOD,
-            '\'' => TokenType::QUOTE,
-            '"' => TokenType::DQUOTE,
             _ => TokenType::INVALID,
         };
 
@@ -207,7 +217,7 @@ impl Lexer {
     // Attempt to lex from a multi-character, but fixed, set of tokens
     // This only includes sigils, not letters or keywords
     pub fn lex_multi_fixed(&mut self) -> Result<bool, &'static str> {
-        let lex: String = self.curr_char.to_string();
+        let mut lex: String = self.curr_char.to_string();
         let start_row = self.curr_row;
         let start_col = self.curr_col;
 
@@ -217,19 +227,67 @@ impl Lexer {
             (">", TokenType::GT),
             (">=", TokenType::GE),
             ("!=", TokenType::NE),
-        ]
+        ];
 
-        let mut matches = multi_fixed_tokens.iter().filter(|item| item[0].starts_with(lex)).clone().collect();
-        while matches.len() >= 1 {
+        let mut matches: Vec<&(&str, TokenType)> = multi_fixed_tokens.iter().filter(|item| (item.0).starts_with(&lex)).clone().collect();
+        let mut new_matches: Vec<&(&str, TokenType)>;
+        // Keep looping to find 1 (or zero) potential matches
+        while matches.len() > 1 {
             self.consume()?;
-            if matches.len() == 1 {
-                // make sure its a complete match and make the token
-            }
             lex.push(self.curr_char);
-            matches = matches.iter().filter(|item| item[0].starts_with(lex)).clone().collect();
+            new_matches = matches.clone().into_iter().filter(|item| (item.0).starts_with(&lex)).collect();
+            // If this sets us to 0 matches, undo the new character
+            //  and remove the too-long lexes that didn't match
+            if new_matches.len() == 0 {
+                lex.pop();
+                matches = matches.into_iter().filter(|item| (item.0).len() == lex.len()).collect();
+            }
+            else {
+                matches = new_matches;
+            }
         }
 
-        Ok(false)
+        // 'matches' has only one (or zero) values now, if zero return
+        //  an invalid token
+        if lex.len() >= 1 && matches.len() > 0 {
+            // We have at least part of a matching fixed lex
+            //  keep consuming token until we get a complete match
+            //  or a conflicting caracter.
+            let match_lex = matches[0].0.clone();
+            let match_token = matches[0].1.clone();
+
+            while lex.len() < match_lex.len() && match_lex.starts_with(&lex) {
+                self.consume()?;
+                lex.push(self.curr_char);
+            }
+
+            if lex == match_lex {
+                // We actually got a match, make the token and consume the character
+                self.consume()?;
+
+                self.curr_lex = lex.clone();
+                self.create_token(start_row, start_col, match_token);
+            }
+            else {
+                // We didn't get a match, don't consume the current token
+                lex.pop();
+                self.curr_lex = lex.to_string().clone();
+                self.create_token(start_row, start_col, TokenType::INVALID);
+            }
+            Ok(true)
+        }
+        else if lex.len() > 1 {
+            // We have parts of a lex that did match at some
+            //  point, but now form an invalid token
+            lex.pop();
+            self.curr_lex = lex.to_string().clone();
+            self.create_token(start_row, start_col, TokenType::INVALID);
+            Ok(true)
+        }
+        else {
+            // We didn't have any lexemes to compare
+            Ok(false)
+        }
     }
 
     // Attempt to create a token for numbers, variables (id),
@@ -238,6 +296,9 @@ impl Lexer {
 
         if self.curr_char.is_numeric() || self.curr_char == '.' {
             return self.lex_number();
+        }
+        if self.curr_char == '"' || self.curr_char == '\'' {
+            return self.lex_text();
         }
         else if self.curr_char.is_alphabetic() {
             return self.lex_id();
@@ -255,11 +316,115 @@ impl Lexer {
         }
         let start_row = self.curr_row;
         let start_col = self.curr_col;
-        while self.curr_char.is_alphabetic() {
+        while self.curr_char.is_alphabetic() || self.curr_char == '_' {
             self.curr_lex.push(self.curr_char);
             self.consume()?;
         }
-        self.create_token(start_row, start_col, TokenType::TEXT(self.curr_lex.clone()));
+
+        let lex_val = self.curr_lex.clone().to_lowercase();
+
+        let token_type = match lex_val.as_str() {
+            "definitions" => TokenType::DEF,
+            "end" => TokenType::END,
+            "structure" => TokenType::STRUCT,
+            "is" => TokenType::IS,
+            "not" => TokenType::WORDNOT,
+            "function" => TokenType::FUN,
+            "returns" => TokenType::RETRUNS,
+            "return" => TokenType::RETURN,
+            "changeable" => TokenType::CHANGEABLE,
+            "array" => TokenType::ARRAY,
+            "of" => TokenType::OF,
+            "nothing" => TokenType::NOTHING,
+            "program" => TokenType::PROGRAM,
+            "quit" => TokenType::QUIT,
+            "link" => TokenType::LINK,
+            "to" => TokenType::TO,
+            "unlink" => TokenType::UNLINK,
+            "break" => TokenType::BREAK,
+            "continue" => TokenType::CONTINUE,
+            "number" => TokenType::NUMTYPE,
+            "text" => TokenType::TEXTTYPE,
+            "if" => TokenType::IF,
+            "then" => TokenType::THEN,
+            "else" => TokenType::ELSE,
+            "while" => TokenType::WHILE,
+            "repeat" => TokenType::REPEAT,
+            "times" => TokenType::TIMES,
+            "for" => TokenType::FOR,
+            "all" => TokenType::ALL,
+            "and" => TokenType::AND,
+            "or" => TokenType::OR,
+            "bit_or" => TokenType::BOR,
+            "bit_xor" => TokenType::BXOR,
+            "bit_and" => TokenType::BAND,
+            "bit_sl" => TokenType::BSL,
+            "bit_sr" => TokenType::BSR,
+            "bit_not" => TokenType::BNOT,
+            _ => TokenType::ID(lex_val),
+        };
+
+        self.create_token(start_row, start_col, token_type);
+        Ok(true)
+    }
+
+    // Lex all of the characters inside of a string
+    pub fn lex_text(&mut self) -> Result<bool, &'static str> {
+        let end_char = self.curr_char;
+        let start_col = self.curr_col;
+        let start_row = self.curr_row;
+        self.curr_lex = String::new();
+        self.curr_lex.push(self.curr_char);
+        self.consume()?;
+
+        while self.curr_char != end_char && self.curr_char != '\0' {
+            if self.curr_char == '\\' {
+                self.consume()?;
+
+                let cleaned_char = match self.curr_char {
+                    '\t' | '\n' | '\0' => ' ',
+                    _ => self.curr_char,
+                };
+
+                let escape_char = match cleaned_char {
+                    't' => '\t',
+                    'n' => '\n',
+                    '"' => '"',
+                    '\'' => '\'',
+                    '\\' => '\\',
+                    _ => cleaned_char,
+                };
+
+                if escape_char == cleaned_char && cleaned_char != '\\' {
+                    self.curr_lex.push('\\');
+                }
+
+                self.curr_lex.push(escape_char);
+            }
+            else {
+                let cleaned_char = match self.curr_char {
+                    '\t' | '\n' | '\0' => ' ',
+                    _ => self.curr_char,
+                };
+                self.curr_lex.push(cleaned_char);
+            }
+
+            self.consume()?;
+        }
+
+        // If the string didn't close, make an invalid token
+        if self.curr_char != end_char {
+            self.create_token(start_row, start_col, TokenType::INVALID);
+        }
+        else {
+            self.curr_lex.push(self.curr_char);
+            self.consume()?;
+            let mut lex_val = self.curr_lex.chars();
+            lex_val.next();
+            lex_val.next_back();
+            self.create_token(start_row, start_col, TokenType::TEXT(lex_val.as_str().to_string()));
+        }
+
         Ok(true)
     }
 

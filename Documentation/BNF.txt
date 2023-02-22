@@ -75,6 +75,7 @@
                            | ''
 
 < loop-statement >       ::= 'break'
+                           | 'continue'
                            | < statement >
 
 < variable-def >         ::= < ids > ':' < variable-type > < var-def-equal >
@@ -107,7 +108,7 @@
 
 < while >                ::= 'while' < condition > < loop-statements > 'end' 'while'
 
-< if >                   ::= 'if' < condition > < loop-statements > < if2 >
+< if >                   ::= 'if' < condition > 'then' < loop-statements > < if2 >
 
 < if2 >                  ::= 'end' 'if'
                            | 'else' < if >
@@ -137,17 +138,17 @@
 
 < resolvable >           ::= < bit-orable >
 
-< bit-orable >           ::= < bit-xorable > 'bit-or' < bit-orable >
+< bit-orable >           ::= < bit-xorable > 'bit_or' < bit-orable >
                            | < bit-xorable >
 
-< bit-xorable >          ::= < bit-andable > 'bit-xor' < bit-xorable >
+< bit-xorable >          ::= < bit-andable > 'bit_xor' < bit-xorable >
                            | < bit-andable >
 
-< bit-andable >          ::= < bit-shiftable > 'bit-and' < bit-andable >
+< bit-andable >          ::= < bit-shiftable > 'bit_and' < bit-andable >
                            | < bit-shiftable > 
 
-< bit-shiftable >        ::= < expression > 'bit-sl' < bit-shiftable >
-                           | < expression > 'bit-sr' < bit-shiftable >
+< bit-shiftable >        ::= < expression > 'bit_sl' < bit-shiftable >
+                           | < expression > 'bit_sr' < bit-shiftable >
                            | < expression >
 
 < expression >           ::= < term > '+' < expression >

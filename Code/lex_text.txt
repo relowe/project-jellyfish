@@ -1,0 +1,16 @@
+definitions
+    VAR_X: text = "Hello, World!"
+    y: number = 14.6
+    arr: array [1 to 5] of number = { 1, 2, 3, 4 }
+end definitions
+program
+    if x <= y then
+        print("Hello!\n")
+    end if
+
+    while a + b / c != 100
+        repeat 100
+            print(a)
+        END repeat
+    end while
+end program
