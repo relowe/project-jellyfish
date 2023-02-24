@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::Read;
 
 #[derive(Debug, PartialEq, Clone)]
-enum TokenType {
+pub enum TokenType {
     TEXT(String),
     ID(String),
     NUMBER(f64),
@@ -67,12 +67,12 @@ enum TokenType {
     PERIOD,    // .
     QUOTE,     // '
     DQUOTE,    // "
-    EOF,
+    EOF, // end of file
     INVALID,
 }
 
 #[derive(Debug, Clone)]
-struct Token {
+pub struct Token {
     token_type: TokenType,
     lexeme: Option<String>,
     row: u32,
@@ -80,7 +80,7 @@ struct Token {
 }
 
 #[derive(Debug)]
-struct Lexer {
+pub struct Lexer {
     curr_row: u32,
     curr_col: u32,
     curr_lex: String,
@@ -91,14 +91,9 @@ struct Lexer {
 
 impl Lexer {
     // Create a new lexer structure from a provided code String
-    // The code String ('text') is expected to have at least
-    //  one character in length
     // This function also loads in the first character into the
     //  'curr_char' buffer for processing
     pub fn new(text: String) -> Result<Self, &'static str> {
-        if text.len() <= 0 {
-            return Err("Code string cannot be null");
-        }
         let mut lex = Lexer {
             raw_text: text.chars().rev().collect::<String>(),
             curr_row: 1,
@@ -115,6 +110,22 @@ impl Lexer {
         };
         lex.consume()?;
         Ok(lex)
+    }
+
+    // Try to load a string into the lexer from a file
+    // This acts as an alternative to 'new', since it creates
+    //  its own lexer structure and returns that
+    pub fn from_file(file: String) -> Result<Self, &'static str> {
+        let result = File::open(file);
+        if result.is_err() {
+            return Err("Could not open file");
+        }
+        let mut file_obj = result.unwrap();
+        let mut code: String = String::new();
+        if file_obj.read_to_string(&mut code).is_err() {
+            return Err("Could not read from file");
+        }
+        Lexer::new(code)
     }
 
     // Consumes a single character from the lexer's raw text
@@ -141,9 +152,14 @@ impl Lexer {
     //  is not whitespace, or is EOF, this does nothing
     // Will consume all trailing whitespace until EOF
     pub fn consume_whitespace(&mut self) -> Result<(), &'static str> {
-        while self.curr_char.is_whitespace() {
+        while self.curr_char.is_whitespace() || self.curr_char == '#' {
             if self.curr_char == '\0' {
                 return Ok(());
+            }
+            if self.curr_char == '#' {
+                while !(self.curr_char == '\n' || self.curr_char == '\0') {
+                    self.consume()?;
+                }
             }
             self.consume()?;
         }
@@ -181,6 +197,11 @@ impl Lexer {
         }
     }
 
+    // Return a boolean for if the current token is EOF
+    pub fn is_done(&self) -> bool {
+        self.curr_token.token_type == TokenType::EOF
+    }
+
     // Attempt to create a token for single character tokens
     pub fn lex_single(&mut self) -> Result<bool, &'static str> {
 
@@ -208,7 +229,7 @@ impl Lexer {
         }
         else {
             self.curr_lex.push(self.curr_char);
-            let token: Token = self.create_token(self.curr_row, self.curr_col, t_type);
+            self.create_token(self.curr_row, self.curr_col, t_type);
             self.consume()?;
             Ok(true)
         }
@@ -300,7 +321,7 @@ impl Lexer {
         if self.curr_char == '"' || self.curr_char == '\'' {
             return self.lex_text();
         }
-        else if self.curr_char.is_alphabetic() {
+        else if self.curr_char.is_alphabetic() || self.curr_char == '_' {
             return self.lex_id();
         }
         else {
@@ -308,12 +329,9 @@ impl Lexer {
         }
     }
 
-    // Lex all concurrent letters together into a single id
-    // This stops at whitespace
+    // Lex all concurrent letters (and underscores) together into a single id
+    // This stops at whitespace (or a non-letter)
     pub fn lex_id(&mut self) -> Result<bool, &'static str> {
-        if !self.curr_char.is_alphabetic() {
-            return Ok(false);
-        }
         let start_row = self.curr_row;
         let start_col = self.curr_col;
         while self.curr_char.is_alphabetic() || self.curr_char == '_' {
@@ -474,24 +492,22 @@ impl Lexer {
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    let mut code: String = String::new();
+    let mut lex: Lexer;
+    let res: Result<Lexer, &'static str>;
     if args.len() > 1 {
         let fname = &args[1];
-        let mut file = File::open(fname).expect("Could not open file");
-        file.read_to_string(&mut code).expect("Could not read from file");
+        res = Lexer::from_file(fname.to_string());
     }
     else {
-        code = "hello, world + 123 - 11.4491 = 12333 test.file \n hello again".to_string();
+        res = Lexer::new("hello, world + 123 - 11.4491 = 12333 test.file \n hello again".to_string());
     }
+
+    lex = match res {
+        Ok(val) => val,
+        Err(val) => panic!("{}", val),
+    };
     
-    let mut lex: Lexer = (Lexer::new(code)).expect("Could not create lexer");
-    loop {
-        lex.next();
-        println!("{:?}", lex.curr_token);
-        if lex.curr_char == '\0' {
-            break;
-        }
+    while !lex.is_done() {
+        println!("{:?}", lex.next());
     }
-    lex.next();
-    println!("{:?}", lex.curr_token);
 }
