@@ -1,0 +1,269 @@
+// This will hold the BNF for the language
+
+< CODE >                 ::= 'definitions' < definitions > < program >
+                           | < program >
+
+< definitions >          ::= < structure-defs > < global-defs > < function-defs > 
+                             'end' 'definitions'
+
+< structure-defs >       ::= < structure-def > < structure-defs >
+                           | ''
+
+< structure-def >        ::= 'structure' ID < strucutre-arg > < structure-args > 
+                             'end' 'structure'
+
+< structure-args >       ::= (id) < structure-arg > < structure-args >
+                           | ''
+
+< structure-arg >        ::= < variable-def >
+
+< global-defs >          ::= < global-def > < global-defs >
+                           | ''
+
+< global-def >           ::= < ids > ':' < variable-type > '=' < resolvable >
+
+< function-defs >        ::= (function) < function-def > < function-defs >
+                           | ''
+
+< function-def >         ::= 'function' ID '(' < fun-def-args > ')' 
+                              'returns' < fun-return-type > < fun-statements > 
+                              'end' 'function'
+
+< fun-def-args >         ::= < fun-def-arg > < fun-def-args' >
+						   
+< fun-def-args' >        ::= ',' < fun-def-args'' >
+						   | ''
+						   
+< fun-def-args'' >		 ::= < fun-def-arg > < fun-def-args' >
+						   | ''
+
+< fun-def-arg >          ::= ID ':' < changeable > < fun-arg-type >
+
+< changeable >            ::= 'changeable'
+                           | ''
+
+< fun-arg-type >         ::= < basic-type >
+                           | 'array' < fun-arg-type' >
+
+< fun-arg-type' >        ::= 'of' < basic-type >
+                           | '[' < bounds > ']' 'of' < basic-type >
+
+< fun-return-type >      ::= 'nothing'
+                           | < basic-type >
+
+< fun-statements >       ::= < fun-statement > < fun-statements >
+                           | ''
+
+< fun-statement >        ::= 'return' < return-value >
+                           | < statement >
+
+< return-value >         ::= < resolvable >
+                           | ''
+
+==================================================================================
+
+< program >              ::= 'program' < statements > 'end' 'program'
+
+< statements >           ::= < statement > < statements >
+                           | ''
+
+< statement >            ::= (id) < asg or var-def >
+                           | (while) < while >
+                           | (if) < if >
+                           | (repeat) < repeat >
+                           | (unlink) < unlink >
+                           | 'quit'
+                           | (*otherwise...) < resolvable >
+						   
+< asg or var-def >		 ::= (=) < assignment >
+						   | (:) < variable-def >
+						   | (*otherwise...) < resolvable >
+
+< unlink >               ::= 'unlink' < reference >
+
+< loop-statements >      ::= < loop-statement > < loop-statements >
+                           | ''
+
+< loop-statement >       ::= 'break'
+                           | 'continue'
+                           | < statement >
+
+< variable-def >         ::= < ids > ':' < variable-type > < var-def-equal >
+
+< ids >                  ::= ID < ids' >
+						 
+< ids' >        		 ::= ',' < ids'' >
+						   | ''
+						   
+< ids'' >		 		 ::= ID < ids' >
+						   | ''
+
+< var-def-equal >        ::= '=' < resolvable >
+                           | ''
+
+< variable-type >        ::= < basic-type >
+                           | 'array' < type or bounds >
+                           | 'link' 'to' < basic-type >
+
+
+< type or bounds >       ::= 'of' < basic-type >
+                           | '[' < bounds > ']' 'of' < basic-type >
+
+< basic-type >           ::= 'number'
+                           | 'text'
+                           | ID // for structures
+
+< bounds >               ::= < bound > < bounds' >
+                           | ''
+						 
+< bounds' >        		 ::= ',' < bounds'' >
+						   | ''
+						   
+< bounds'' >		 	 ::= < bound > < bounds' >
+						   | ''
+
+< bound >                ::= < resolvable > < bound' >
+						   
+< bound' >				 ::= 'to' < resolvable >
+						   | ''
+
+< assignment >           ::= (id) < reference > '=' < resolvable >
+                           | 'link' 'to' < reference >
+
+< while >                ::= 'while' < condition > < loop-statements > 'end' 'while'
+
+< if >                   ::= 'if' < condition > 'then' < loop-statements > < if2 >
+
+< if2 >                  ::= 'end' 'if'
+                           | 'else' < if2 elif >
+
+< if2 elif >			 ::= (if) < if >
+						   | < loop-statements > 'end' 'if'
+
+< repeat >               ::= 'repeat' < repeat' >
+
+< repeat' >              ::= < loop-statements > 'end' 'repeat'
+                           | NUMBER 'times' < loop-statements > 'end' 'repeat'
+                           | 'for' 'all' ID 'in' ID < loop-statements > 'end' 'repeat'
+
+< condition >            ::= < logic-andable > < condition' >
+						   
+< condition' >           ::= 'or' < logic-andable > < condition' >           
+                           | ''
+
+< logic-andable >        ::= < logic-paren >  < logic-andable' >
+
+< logic-andable >        ::= and' < logic-paren > < logic-andable' >
+                           | ''
+
+< logic-paren >          ::= '(' < condition > ')'
+                           | < comparable >
+
+< comparable >           ::= < resolvable > < comparable' >
+
+< comparable' >          ::= '>' < resolvable >
+                           | '<' < resolvable >
+                           | '>=' < resolvable >
+                           | '<=' < resolvable >
+                           | '=' < resolvable >
+                           | '!=' < resolvable >
+                           | 'is' < linked or not >
+
+< linked or not >        ::= 'linked'
+						   | 'not' 'linked'
+
+< resolvable >           ::= < bit-orable >
+
+====================================
+< bit-orable >           ::= < bit-xorable > < bit-orable' >
+						   
+< bit-orable' >			 ::= 'bit_or' < bit-orable >
+						   | ''
+
+< bit-xorable >          ::= < bit-andable > < bit-xorable' >
+						   
+< bit-xorable' >		 ::= 'bit_xor' < bit-xorable >
+						   | ''
+
+< bit-andable >          ::= < bit-shiftable >  < bit-andable' >
+						   
+< bit-andable' >		 ::= 'bit_and' < bit-andable >
+						   | ''
+
+< bit-shiftable >        ::= < expression > < bit-shiftable' >
+
+< bit-shiftable' >       ::=  'bit_sl' < bit-shiftable >
+                           |  'bit_sr' < bit-shiftable >
+                           | ''
+
+< expression >           ::= < term > < expression' >
+
+< expression' >			 ::= '+' < expression >
+                           | '-' < expression >
+                           | ''
+
+< term >                 ::= < factor > < term' >
+
+< term' >                ::= '*' < term >
+                           | '/' < term >
+                           | 'mod' < term >
+                           | ''
+
+< factor >               ::= < exponent > < factor' >
+                           | '-' < factor >
+
+< factor' >              ::= '^' < factor >
+                           | ''
+
+< bit-notable >          ::= 'bit_not' < exponent >
+                           | < exponent >
+
+< exponent >             ::= '+' < exponent >
+                           | '(' < resolvable > ')'
+                           | NUMBER
+                           | TEXT
+                           | ID < ref-or-call > //pass in id
+                           | ('{') < array-struct-lit >
+
+< ref-or-call >			 ::= '(' < call' >
+						   | < reference' >
+
+< array-struct-lit >     ::= '{' < array-struct-items > '}'
+
+< array-struct-items >   ::= < resolvable > < array-struct-items' >
+                           | ''
+
+< array-struct-items' >  ::= ',' < array-struct-items'' >
+						   | ''
+
+< array-struct-items'' > ::= < resolvable > < array-struct-items' >
+						   | ''
+
+
+
+
+< reference >            ::= ID < reference' >
+
+< reference' >           ::= '[' < index > ']'
+                           | '.' ID
+						   | ''
+
+
+
+< index >                ::= < resolvable > < index' >
+                           | ''
+
+< index' >				 ::= ',' < index >
+						   | ''
+
+< call >                 ::= ID '(' < call' >
+**************
+< call' >                ::= < arg-list > ')'
+                           | ')'
+**************
+< arg-list >             ::= < resolvable > < arg-list' >
+
+< arg-list' >            ::= ',' < arg-list'' >
+                           | ''
+< arg-list'' >			 ::= < resolvable > < arg-list' >
+						   | ''
