@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::env;
 use std::fs::File;
 use std::io::Read;
@@ -65,18 +67,16 @@ pub enum TokenType {
     LCURLY,    // {
     RCURLY,    // }
     PERIOD,    // .
-    QUOTE,     // '
-    DQUOTE,    // "
     EOF, // end of file
     INVALID,
 }
 
 #[derive(Debug, Clone)]
 pub struct Token {
-    token_type: TokenType,
-    lexeme: Option<String>,
-    row: u32,
-    col: u32,
+    pub token_type: TokenType,
+    pub lexeme: Option<String>,
+    pub row: u32,
+    pub col: u32,
 }
 
 #[derive(Debug)]
@@ -85,7 +85,7 @@ pub struct Lexer {
     curr_col: u32,
     curr_lex: String,
     curr_char: char,
-    curr_token: Token,
+    pub curr_token: Token,
     raw_text: String,
 }
 
@@ -379,6 +379,7 @@ impl Lexer {
             "bit_sl" => TokenType::BSL,
             "bit_sr" => TokenType::BSR,
             "bit_not" => TokenType::BNOT,
+            "mod" => TokenType::MOD,
             _ => TokenType::ID(lex_val),
         };
 
