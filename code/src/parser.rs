@@ -74,13 +74,19 @@ impl ParseTree {
         let mut idx = 0;
 
         if len == 0 {
-            println!{"{:?} ({:?})", self.parse_type, self.token};
+            match self.token.token_type {
+                lexer::TokenType::INVALID => println!{"{:?}", self.parse_type},
+                _ => println!{"{:?} ({:?})", self.parse_type, self.token},
+            };
             return;
         }
 
         for child in self.children.iter() {
             if idx == len / 2 {
-                println!{"{:?} ({:?})", self.parse_type, self.token};
+                match self.token.token_type {
+                    lexer::TokenType::INVALID => println!{"{:?}", self.parse_type},
+                    _ => println!{"{:?} ({:?})", self.parse_type, self.token},
+                };
             }
             
             match child {
@@ -100,7 +106,10 @@ impl ParseTree {
             for n in 0..tab {
                 print!{"| "};
             }
-            println!{"{:?} ({:?})", self.parse_type, self.token};
+            match self.token.token_type {
+                lexer::TokenType::INVALID => println!{"{:?}", self.parse_type},
+                _ => println!{"{:?} ({:?})", self.parse_type, self.token},
+            };
             return;
         }
 
@@ -109,7 +118,10 @@ impl ParseTree {
                 for n in 0..tab {
                     print!{"| "};
                 }
-                println!{"{:?} ({:?})", self.parse_type, self.token};
+                match self.token.token_type {
+                    lexer::TokenType::INVALID => println!{"{:?}", self.parse_type},
+                    _ => println!{"{:?} ({:?})", self.parse_type, self.token},
+                };
             }
             
             match child {
@@ -463,11 +475,4 @@ pub fn main() {
         Some(t) => t.print(),
         _ => ()
     };
-    // p.next().expect("Boo hoo!");
-    // p.must_be(&lexer::TokenType::DEF);
-    
-    // 
-    // while !p.is_done() {
-    //     println!("{:?}", p.next());
-    // }
 }
