@@ -1,16 +1,16 @@
 // This will hold the BNF for the language
 
-< CODE >                 ::= 'definitions' < definitions > < program >
+< CODE >                 ::= DEF < definitions > < program >
                            | < program >
 
 < definitions >          ::= < structure-defs > < global-defs > < function-defs > 
-                             'end' 'definitions'
+                             END DEF
 
 < structure-defs >       ::= < structure-def > < structure-defs >
                            | ''
 
-< structure-def >        ::= 'structure' ID < strucutre-arg > < structure-args > 
-                             'end' 'structure'
+< structure-def >        ::= STRUCT ID < strucutre-arg > < structure-args > 
+                             END STRUCT
 
 < structure-args >       ::= (id) < structure-arg > < structure-args >
                            | ''
@@ -20,14 +20,14 @@
 < global-defs >          ::= < global-def > < global-defs >
                            | ''
 
-< global-def >           ::= < ids > ':' < variable-type > '=' < resolvable >
+< global-def >           ::= < ids > COLON < variable-type > EQ < resolvable >
 
 < function-defs >        ::= (function) < function-def > < function-defs >
                            | ''
 
-< function-def >         ::= 'function' ID '(' < fun-def-args > ')' 
-                              'returns' < fun-return-type > < fun-statements > 
-                              'end' 'function'
+< function-def >         ::= FUN ID LPAREN < fun-def-args > RPAREN 
+                              RETURNS < fun-return-type > < fun-statements > 
+                              END FUN
 
 < fun-def-args >         ::= < fun-def-arg > < fun-def-args' >
 						   
@@ -39,7 +39,7 @@
 
 < fun-def-arg >          ::= ID ':' < changeable > < fun-arg-type >
 
-< changeable >            ::= 'changeable'
+< changeable >            ::= CHANGEABLE
                            | ''
 
 < fun-arg-type >         ::= < basic-type >
