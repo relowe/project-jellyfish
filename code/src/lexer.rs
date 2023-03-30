@@ -28,7 +28,7 @@ pub enum TokenType {
     IS,        // is
     WORDNOT,   // not
     FUN,       // function
-    RETRUNS,   // returns
+    RETURNS,   // returns
     RETURN,    // return
     LPAREN,    // (
     RPAREN,    // )
@@ -349,7 +349,7 @@ impl Lexer {
             "is" => TokenType::IS,
             "not" => TokenType::WORDNOT,
             "function" => TokenType::FUN,
-            "returns" => TokenType::RETRUNS,
+            "returns" => TokenType::RETURNS,
             "return" => TokenType::RETURN,
             "changeable" => TokenType::CHANGEABLE,
             "array" => TokenType::ARRAY,
