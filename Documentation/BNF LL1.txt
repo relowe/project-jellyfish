@@ -20,7 +20,7 @@
 < global-defs >          ::= < global-def > < global-defs >
                            | ''
 
-< global-def >           ::= < ids > COLON < variable-type > EQ < resolvable >
+< global-def >           ::= < variable-def >
 
 < function-defs >        ::= (function) < function-def > < function-defs >
                            | ''
