@@ -42,8 +42,9 @@ pub enum TokenType {
     PROGRAM,   // program
     QUIT,      // quit
     LINK,      // link
-    TO,        // to
+    LINKED,    // linked
     UNLINK,    // unlink
+    TO,        // to
     BREAK,     // break
     CONTINUE,  // continue
     NUMTYPE,   // number
@@ -357,8 +358,9 @@ impl Lexer {
             "program" => TokenType::PROGRAM,
             "quit" => TokenType::QUIT,
             "link" => TokenType::LINK,
-            "to" => TokenType::TO,
+            "linked" => TokenType::LINKED
             "unlink" => TokenType::UNLINK,
+            "to" => TokenType::TO,
             "break" => TokenType::BREAK,
             "continue" => TokenType::CONTINUE,
             "number" => TokenType::NUMTYPE,
