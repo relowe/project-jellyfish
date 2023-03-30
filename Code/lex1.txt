@@ -1,0 +1,13 @@
+definitions
+
+    function say_hello() returns nothing
+        print("Hello, World")
+    end function
+
+end definitions
+
+program
+
+    say_hello()
+
+end program

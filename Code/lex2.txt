@@ -1,0 +1,28 @@
+definitions
+
+    fucntion bubble_sort(arr: array of number) returns array of number
+        tmp: number
+        start: number = lower_bound(arr)
+
+        while start < upper_bound(arr)-1
+            ptr: number = start
+            while ptr < upper_bound(arr)-1
+                if arr[ptr+1] > arr[ptr]
+                    tmp = arr[ptr]
+                    arr[ptr] = arr[ptr+1]
+                    arr[ptr+1] = tmp
+                end if
+                ptr = ptr + 1
+            end while
+            start = start + 1
+        end while
+    end function
+
+end definitions
+
+program
+
+    ar: array [1 to 5] of number = {5, 3, 2, 4, 1}
+    sorted: array [1 to 5] of number = bubble_sort(ar)
+
+end program
