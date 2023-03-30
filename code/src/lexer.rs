@@ -358,7 +358,7 @@ impl Lexer {
             "program" => TokenType::PROGRAM,
             "quit" => TokenType::QUIT,
             "link" => TokenType::LINK,
-            "linked" => TokenType::LINKED
+            "linked" => TokenType::LINKED,
             "unlink" => TokenType::UNLINK,
             "to" => TokenType::TO,
             "break" => TokenType::BREAK,

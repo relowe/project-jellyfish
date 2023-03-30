@@ -4,12 +4,16 @@ use std::{env};
 use crate::lexer;
 use std::mem;
 
-const NULL_TOKEN: lexer::Token = lexer::Token {
+static NULL_TOKEN: lexer::Token = lexer::Token {
     row: 0,
     col: 0,
-    token_type: &lexer::TokenType::INVALID,
+    token_type: lexer::TokenType::INVALID,
     lexeme: None
 };
+
+static ID_TYPE: lexer::TokenType = lexer::TokenType::ID(String::new());
+static TEXT_TYPE: lexer::TokenType = lexer::TokenType::TEXT(String::new());
+static NUMBER_TYPE: lexer::TokenType = lexer::TokenType::NUMBER(0.0);
 
 macro_rules! log {
     ($($t:tt)*) => (println!("{}",  &format_args!($ ( $t ) *).to_string() ))
@@ -51,6 +55,7 @@ pub enum ParseType {
     PARAMS,        // list of params
     PARAM,         // a single name and expected value
     ID,            // some form of name
+    IDS,           // a collection of names (for variable declaration)
     LIT,           // a literal value
     STRUCTARGS,    // a list of structure arguments
     STRUCTARG,     // a name, type, and default value
@@ -61,6 +66,60 @@ pub struct ParseTree {
     parse_type: ParseType,
     token: lexer::Token,
     children: Vec<Option<ParseTree>>,
+}
+
+impl ParseTree {
+    pub fn print(&self) {
+        let len = self.children.len();
+        let mut idx = 0;
+
+        if len == 0 {
+            println!{"{:?} ({:?})", self.parse_type, self.token};
+            return;
+        }
+
+        for child in self.children.iter() {
+            if idx == len / 2 {
+                println!{"{:?} ({:?})", self.parse_type, self.token};
+            }
+            
+            match child {
+                Some(tree) => tree.print_tabbed(1),
+                _ => (),
+            };
+
+            idx += 1;
+        }
+    }
+
+    fn print_tabbed(&self, tab: usize) {
+        let len = self.children.len();
+        let mut idx = 0;
+
+        if len == 0 {
+            for n in 0..tab {
+                print!{"| "};
+            }
+            println!{"{:?} ({:?})", self.parse_type, self.token};
+            return;
+        }
+
+        for child in self.children.iter() {
+            if idx == len / 2 {
+                for n in 0..tab {
+                    print!{"| "};
+                }
+                println!{"{:?} ({:?})", self.parse_type, self.token};
+            }
+            
+            match child {
+                Some(tree) => tree.print_tabbed(tab + 1),
+                _ => (),
+            };
+
+            idx += 1;
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -96,18 +155,29 @@ impl Parser {
         self.lexer.next()
     }
 
+    // Get the current token in the lexer
+    pub fn curr_token(&self) -> lexer::Token {
+        self.lexer.curr_token.clone()
+    }
+
     fn has(&self, token_type: &lexer::TokenType) -> bool {
         // self.lexer.curr_token.token_type == token_type
-        mem::discriminant(&self.lexer.curr_token.token_type) == mem::discriminant(token_type)
+        mem::discriminant(&self.curr_token().token_type) == mem::discriminant(token_type)
     }
 
     // need to make it kill program...
     fn must_be(&self, token_type: &lexer::TokenType) {
         if !self.has(token_type) {
-            log!("Parse Error on Line: {}, Column: {}", self.lexer.curr_token.row, self.lexer.curr_token.col);
+            log!("Parse Error on Line: {}, Column: {}", self.curr_token().row, self.curr_token().col);
             log!("Expected: {:?}", token_type);
-            log!("Got: {:?}", self.lexer.curr_token.token_type);
+            log!("Got: {:?}", self.curr_token().token_type);
         }
+    }
+
+    // Helper function to call 'must_be' and 'next'
+    fn eat(&mut self, token_type: &lexer::TokenType) -> Result<lexer::Token, &'static str> {
+        self.must_be(token_type);
+        self.next()
     }
 
     pub fn parse(&mut self) -> Result<Option<ParseTree>, &'static str> {
@@ -116,9 +186,9 @@ impl Parser {
 
     fn code(&mut self) -> Result<Option<ParseTree>, &'static str> {
         self.next()?;
-        let parse_tree = ParseTree{
+        let mut parse_tree = ParseTree{
             parse_type: ParseType::CODE,
-            token: NULL_TOKEN,
+            token: NULL_TOKEN.clone(),
             children: Vec::new()
         };
 
@@ -136,9 +206,9 @@ impl Parser {
     }
 
     fn definitions(&mut self) -> Result<Option<ParseTree>, &'static str> {
-        let parse_tree = ParseTree{
+        let mut parse_tree = ParseTree{
             parse_type: ParseType::DEFINITIONS,
-            token: NULL_TOKEN,
+            token: NULL_TOKEN.clone(),
             children: Vec::new()
         };
 
@@ -155,9 +225,9 @@ impl Parser {
     }
 
     fn structure_defs(&mut self) -> Result<Option<ParseTree>, &'static str> {
-        let parse_tree = ParseTree{
+        let mut parse_tree = ParseTree{
             parse_type: ParseType::STRUCTDEFS,
-            token: NULL_TOKEN,
+            token: NULL_TOKEN.clone(),
             children: Vec::new()
         };
 
@@ -173,34 +243,30 @@ impl Parser {
     }
 
     fn structure_def(&mut self) -> Result<Option<ParseTree>, &'static str> {
-        let parse_tree = ParseTree{
+        let mut parse_tree = ParseTree{
             parse_type: ParseType::STRUCTDEF,
-            token: NULL_TOKEN,
+            token: NULL_TOKEN.clone(),
             children: Vec::new()
         };
 
-        self.must_be(&lexer::TokenType::STRUCT);
-        self.next()?;
+        self.eat(&lexer::TokenType::STRUCT)?;
 
         parse_tree.children.push(self.id()?);
 
         parse_tree.children.push(self.structure_args()?);
 
-        self.must_be(&lexer::TokenType::END);
-        self.next()?;
-
-        self.must_be(&lexer::TokenType::STRUCT);
-        self.next()?;
+        self.eat(&lexer::TokenType::END)?;
+        self.eat(&lexer::TokenType::STRUCT)?;
 
         Ok(Some(parse_tree))
     }
     
     fn id(&mut self) -> Result<Option<ParseTree>, &'static str> {
-        self.must_be(&lexer::TokenType::ID('a'.to_string()));
+        self.must_be(&ID_TYPE);
 
-        let parse_tree = ParseTree{
+        let mut parse_tree = ParseTree{
             parse_type: ParseType::ID,
-            token: self.lexer.curr_token,
+            token: self.curr_token(),
             children: Vec::new()
         };
 
@@ -209,15 +275,15 @@ impl Parser {
     }
 
     fn structure_args(&mut self) -> Result<Option<ParseTree>, &'static str> {
-        let parse_tree = ParseTree{
+        let mut parse_tree = ParseTree{
             parse_type: ParseType::STRUCTARGS,
-            token: NULL_TOKEN,
+            token: NULL_TOKEN.clone(),
             children: Vec::new()
         };
 
-        self.must_be(&lexer::TokenType::ID('a'.to_string()));
+        self.must_be(&ID_TYPE);
 
-        while self.has(&lexer::TokenType::ID('a'.to_string())) {
+        while self.has(&ID_TYPE) {
             parse_tree.children.push(self.structure_arg()?);
         }
 
@@ -225,14 +291,13 @@ impl Parser {
     }
 
     fn structure_arg(&mut self) -> Result<Option<ParseTree>, &'static str> {
-        let parse_tree = ParseTree{
+        let mut parse_tree = ParseTree{
             parse_type: ParseType::STRUCTARG,
-            token: NULL_TOKEN,
+            token: NULL_TOKEN.clone(),
             children: Vec::new()
         };
 
-        self.must_be(&lexer::TokenType::ID('a'.to_string()));
-        self.next()?;
+        parse_tree.children.push(self.id()?);
 
         parse_tree.children.push(self.var_type()?);
 
@@ -249,50 +314,127 @@ impl Parser {
         Ok(Some(parse_tree))
     }
 
-    // not done, fix later
     fn global_defs(&mut self) -> Result<Option<ParseTree>, &'static str> {
-        let parse_tree = ParseTree{
+        let mut parse_tree = ParseTree{
             parse_type: ParseType::GLOBALDEFS,
-            token: NULL_TOKEN,
+            token: NULL_TOKEN.clone(),
             children: Vec::new()
         };
 
-        while self.has(&lexer::TokenType::ID('a'.to_string())) {
-            parse_tree.children.push(self.var_def()?);
+        while self.has(&ID_TYPE) {
+            parse_tree.children.push(self.variable_def()?);
         }
 
         Ok(Some(parse_tree))
     }
 
-    // not done, fix later
-    fn assign_or_vardef(&mut self) -> Result<Option<ParseTree>, &'static str> {
-        self.must_be(&lexer::TokenType::ID('a'.to_string()));
-
-        let parse_tree = ParseTree{
-            parse_type: ParseType::ASSIGN,
-            token: NULL_TOKEN,
+    // Return either a VARDEF tree, or an ASSIGN tree
+    fn variable_def(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        let mut parse_tree = ParseTree{
+            parse_type: ParseType::VARDEF,
+            token: NULL_TOKEN.clone(),
             children: Vec::new()
         };
 
-        self.next()?;
+        parse_tree.children.push(self.ids()?);
 
-        self.must_be(&lexer::TokenType::COLON);
-        self.next()?;
+        self.eat(&lexer::TokenType::COLON)?;
 
         parse_tree.children.push(self.var_type()?);
 
-        self.must_be(&lexer::TokenType::EQ);
-        self.next()?;
+        if self.has(&lexer::TokenType::EQ) {
+            let mut assign_tree = ParseTree {
+                parse_type: ParseType::ASSIGN,
+                token: NULL_TOKEN.clone(),
+                children: Vec::new()
+            };
 
-        parse_tree.children.push(self.resolvable()?);
+            assign_tree.children.push(Some(parse_tree));
+            assign_tree.children.push(self.resolvable()?);
+            return Ok(Some(assign_tree));
+        }
         
         Ok(Some(parse_tree))
     }
 
+    // Returns either a singular ID tree, or an IDS tree
+    fn ids(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        let id = self.id()?;
+
+        if !self.has(&lexer::TokenType::COMMA) {
+            return Ok(id);
+        }
+
+        let mut parse_tree = ParseTree{
+            parse_type: ParseType::IDS,
+            token: NULL_TOKEN.clone(),
+            children: Vec::new()
+        };
+
+        parse_tree.children.push(id);
+
+        while self.has(&lexer::TokenType::COMMA) {
+            self.next()?;
+
+            if self.has(&ID_TYPE) {
+                parse_tree.children.push(self.id()?);
+            }
+            else {
+                break;
+            }
+        }
+
+        Ok(Some(parse_tree))
+    }
+
+    //TODO
+    fn resolvable(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        let mut parse_tree = ParseTree{
+            parse_type: ParseType::QUIT,
+            token: NULL_TOKEN.clone(),
+            children: Vec::new()
+        };
+
+        Ok(Some(parse_tree))
+    }
+
+    //TODO
+    fn var_type(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        let mut parse_tree = ParseTree{
+            parse_type: ParseType::QUIT,
+            token: NULL_TOKEN.clone(),
+            children: Vec::new()
+        };
+
+        Ok(Some(parse_tree))
+    }
+
+    //TODO
+    fn function_defs(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        let mut parse_tree = ParseTree{
+            parse_type: ParseType::QUIT,
+            token: NULL_TOKEN.clone(),
+            children: Vec::new()
+        };
+
+        Ok(Some(parse_tree))
+    }
+
+    //TODO
+    fn program(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        let mut parse_tree = ParseTree{
+            parse_type: ParseType::QUIT,
+            token: NULL_TOKEN.clone(),
+            children: Vec::new()
+        };
+
+        Ok(Some(parse_tree))
+    }
+
     fn foo(&mut self) -> Result<Option<ParseTree>, &'static str> {
-        let parse_tree = ParseTree{
-            parse_type: ParseType::STRUCTDEF,
-            token: NULL_TOKEN,
+        let mut parse_tree = ParseTree{
+            parse_type: ParseType::QUIT,
+            token: NULL_TOKEN.clone(),
             children: Vec::new()
         };
 
@@ -316,7 +458,11 @@ pub fn main() {
         p = Parser::new("hello, world + 123 - 11.4491 = 12333 test.file \n hello again".to_string()).expect("Could not create lexer");
     }
 
-    println!("{:?}", p.parse().expect("Waaaah"));
+    let tree = p.parse().expect("Error");
+    match tree {
+        Some(t) => t.print(),
+        _ => ()
+    };
     // p.next().expect("Boo hoo!");
     // p.must_be(&lexer::TokenType::DEF);
     
