@@ -160,6 +160,8 @@ impl Parser {
         let lexer = lexer::Lexer::from_file(file)?;
         Ok(Parser {
             lexer: lexer,
+            in_fun_def: false,
+            in_loop_block: false,
         })
     }
 
@@ -447,7 +449,7 @@ impl Parser {
 
         parse_tree.children.push(self.fun_return_type()?);
 
-        parse_tree.children.push(self.fun_statements()?);
+        parse_tree.children.push(self.statements()?);
 
         self.eat(&lexer::TokenType::END)?;
         self.eat(&lexer::TokenType::FUN)?;
@@ -568,7 +570,7 @@ impl Parser {
             children: Vec::new()
         };
 
-        while !self.has(&lexer::TokenType::END) {
+        while !self.has(&lexer::TokenType::END) & !self.has(&lexer::TokenType::EOF) {
             parse_tree.children.push(self.statement()?);
         }
 
@@ -614,6 +616,8 @@ impl Parser {
             children: Vec::new()
         };
 
+        self.next()?;
+
         Ok(Some(parse_tree))
     }
 
@@ -627,8 +631,8 @@ impl Parser {
             children: Vec::new()
         };
 
-        parse_tree.children.append(self.condition()?);
-        parse_tree.children.append(self.loop_statements()?);
+        parse_tree.children.push(self.condition()?);
+        parse_tree.children.push(self.statements()?);
 
         self.eat(&lexer::TokenType::END)?;
         self.eat(&lexer::TokenType::WHILE)?;
@@ -650,7 +654,7 @@ impl Parser {
         
         self.eat(&lexer::TokenType::THEN)?;
 
-        parse_tree.children.push(self.loop_statements()?);
+        parse_tree.children.push(self.statements()?);
 
         if self.has(&lexer::TokenType::ELSE) {
             parse_tree.children.push(self.if_block_2()?);
@@ -674,14 +678,25 @@ impl Parser {
                 parse_type: ParseType::IF,
                 token: NULL_TOKEN.clone(),
                 children: Vec::new()
-            }
+            };
 
             parse_tree.children.push(self.condition()?);
-            parse_tree.children.push(self.loop_statements()?);
+            parse_tree.children.push(self.statements()?);
 
             return Ok(Some(parse_tree));
         }
 
+        let mut parse_tree = ParseTree{
+            parse_type: ParseType::QUIT,
+            token: NULL_TOKEN.clone(),
+            children: Vec::new()
+        };
+
+        Ok(Some(parse_tree))
+    }
+
+    //TODO
+    fn condition(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut parse_tree = ParseTree{
             parse_type: ParseType::QUIT,
             token: NULL_TOKEN.clone(),
