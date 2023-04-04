@@ -19,7 +19,7 @@ macro_rules! log {
     ($($t:tt)*) => (println!("{}",  &format_args!($ ( $t ) *).to_string() ))
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ParseType {
     CODE,       // the start of all trees
     DEFINITIONS,// the definitions section of the program
@@ -28,6 +28,7 @@ pub enum ParseType {
     BLOCK,      // a block of statements to execute
     FUNDEF,     // function definition
     VARDEF,     // variable definition
+    VARDEFS,    // variable definition for a list of ids
     STRUCTDEFS, // define structures
     STRUCTDEF,  // define a structure
     ASSIGN,     // assign a value to a variable
@@ -41,6 +42,11 @@ pub enum ParseType {
     CONTINUE,   // continue
     BINOP,      // binary operation (add, sub, div, ...)
     BINCOMP,    // binary comparison (=, !=, <, ...)
+    ISLINKED,   // conditional for if a variable is linked
+    ISNOTLINKED, // conditional for if a varialbe is unliked
+    BITNOT,     // bitwise not operation
+    NEG,        // negative value operation
+    ABS,        // absolute value operation
     RETURN,     // return
     TYPE,       // variable type
     CHANGEABLE, // changeable modifier for types
@@ -61,6 +67,9 @@ pub enum ParseType {
     LIT,           // a literal value
     STRUCTARGS,    // a list of structure arguments
     STRUCTARG,     // a name, type, and default value
+    INDEX,         // a set of indecies to get from an array
+
+    INVALID,       // an invalid parse instruction, just for placeholding
 }
 
 #[derive(Debug, Clone)]
@@ -84,7 +93,7 @@ impl ParseTree {
         }
 
         for child in self.children.iter() {
-            if idx == len / 2 {
+            if idx == 0 {
                 match self.token.token_type {
                     lexer::TokenType::INVALID => println!{"{:?}", self.parse_type},
                     _ => println!{"{:?} ({:?})", self.parse_type, self.token},
@@ -116,7 +125,7 @@ impl ParseTree {
         }
 
         for child in self.children.iter() {
-            if idx == len / 2 {
+            if idx == 0 {
                 for _n in 0..tab {
                     print!{"| "};
                 }
@@ -141,6 +150,7 @@ pub struct Parser {
     lexer: lexer::Lexer,
     in_fun_def: bool,
     in_loop_block: bool,
+    in_if_block: bool,
 }
 
 impl Parser {
@@ -152,6 +162,7 @@ impl Parser {
             lexer: lexer,
             in_fun_def: false,
             in_loop_block: false,
+            in_if_block: false,
         })
     }
 
@@ -187,12 +198,14 @@ impl Parser {
     }
 
     // need to make it kill program...
-    fn must_be(&self, token_type: &lexer::TokenType) {
+    fn must_be(&self, token_type: &lexer::TokenType) -> bool {
         if !self.has(token_type) {
             log!("Parse Error on Line: {}, Column: {}", self.curr_token().row, self.curr_token().col);
             log!("Expected: {:?}", token_type);
             log!("Got: {:?}", self.curr_token().token_type);
         }
+
+        true
     }
 
     // Helper function to call 'must_be' and 'next'
@@ -510,7 +523,7 @@ impl Parser {
         self.eat(&lexer::TokenType::COLON)?;
 
 
-        // NEED TO MATCH TO TYPE TREE
+        // Get the changable modifer
         let changeable = match self.curr_token().token_type {
             lexer::TokenType::CHANGEABLE => Some(ParseTree {
                 parse_type: ParseType::CHANGEABLE,
@@ -524,7 +537,6 @@ impl Parser {
             self.next()?;
         }
 
-        
 
         Ok(Some(parse_tree))
     }
@@ -547,7 +559,9 @@ impl Parser {
             children: Vec::new()
         };
 
-        while !self.has(&lexer::TokenType::END) && !(self.in_if_block && self.has(&lexer::TokenType::ELSE)) {
+        while !self.has(&lexer::TokenType::END) && 
+              !self.has(&lexer::TokenType::EOF) &&
+              !(self.in_if_block && self.has(&lexer::TokenType::ELSE)) {
             if self.in_fun_def && self.has(&lexer::TokenType::RETURN) {
                 parse_tree.children.push(self.return_statement()?);
                 self.next()?;
@@ -573,10 +587,6 @@ impl Parser {
             else {
                 parse_tree.children.push(self.statement()?);
             }
-        }
-
-        while !self.has(&lexer::TokenType::END) && !self.has(&lexer::TokenType::EOF) {
-            parse_tree.children.push(self.statement()?);
         }
 
         Ok(Some(parse_tree))
@@ -613,7 +623,6 @@ impl Parser {
         Ok(Some(parse_tree))
     }
 
-    //TODO
     fn return_statement(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut parse_tree = ParseTree{
             parse_type: ParseType::QUIT,
@@ -621,22 +630,79 @@ impl Parser {
             children: Vec::new()
         };
 
-        self.next()?;
+        self.eat(&lexer::TokenType::RETURN)?;
+
+        // Return nothing, needs keyword nothing
+        if self.has(&lexer::TokenType::NOTHING) {
+            self.next()?;
+            parse_tree.children.push(None);
+        }
+        // Returns a resolvable statement
+        else {
+            parse_tree.children.push(self.resolvable()?);
+        }
 
         Ok(Some(parse_tree))
     }
 
     //TODO
     fn assign_or_var_def(&mut self) -> Result<Option<ParseTree>, &'static str> {
-        let mut parse_tree = ParseTree{
-            parse_type: ParseType::QUIT,
-            token: NULL_TOKEN.clone(),
-            children: Vec::new()
-        };
+        let mut id_tree = self.ids()?;
 
-        self.next()?;
+        // handle special < var-def > for multiple ids
+        if id_tree.clone().unwrap().parse_type == ParseType::IDS {
+            self.eat(&lexer::TokenType::COLON)?;
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::VARDEFS,
+                token: NULL_TOKEN.clone(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(id_tree);
+            parse_tree.children.push(self.var_type()?);
+            // don't allow for multiple assignment, only type def
+            return Ok(Some(parse_tree));
+        }
 
-        Ok(Some(parse_tree))
+        // < assignment >
+        if self.has(&lexer::TokenType::EQ) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::ASSIGN,
+                token: NULL_TOKEN.clone(),
+                children: Vec::new(),
+            };
+            self.next()?;
+            parse_tree.children.push(id_tree);
+            parse_tree.children.push(self.resolvable()?);
+            return Ok(Some(parse_tree));
+        }
+        // < var-def >
+        else if self.has(&lexer::TokenType::COLON) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::VARDEF,
+                token: NULL_TOKEN.clone(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(id_tree);
+            parse_tree.children.push(self.var_type()?);
+
+            // < var-def-equal >
+            if self.has(&lexer::TokenType::EQ) {
+                let mut assign_tree = ParseTree {
+                    parse_type: ParseType::ASSIGN,
+                    token: NULL_TOKEN.clone(),
+                    children: Vec::new(),
+                };
+                self.next()?;
+                assign_tree.children.push(Some(parse_tree));
+                assign_tree.children.push(self.resolvable()?);
+                return Ok(Some(assign_tree));
+            }
+
+            return Ok(Some(parse_tree));
+        }
+
+        // < resolvable' >
+        self.resolvable2(id_tree)
     }
 
     fn while_block(&mut self) -> Result<Option<ParseTree>, &'static str> {
@@ -687,13 +753,13 @@ impl Parser {
         if self.has(&lexer::TokenType::END) {
             self.eat(&lexer::TokenType::END)?;
             self.eat(&lexer::TokenType::IF)?;
-            return None;
+            return Ok(None);
         }
 
         self.eat(&lexer::TokenType::ELSE)?;
 
         if self.has(&lexer::TokenType::IF) {
-            return self.if_block()?;
+            return self.if_block();
         }
 
         // we don't need to set self.in_if_block here
@@ -704,16 +770,128 @@ impl Parser {
         self.eat(&lexer::TokenType::END)?;
         self.eat(&lexer::TokenType::IF)?;
 
-        Ok(Some(else_block))
+        Ok(else_block)
     }
 
-    //TODO
     fn condition(&mut self) -> Result<Option<ParseTree>, &'static str> {
-        let mut parse_tree = ParseTree{
-            parse_type: ParseType::QUIT,
+        // < condition >
+        let mut left = self.logic_andable()?;
+
+        let mut parse_tree: ParseTree;
+
+        // < condition' >
+        while self.has(&lexer::TokenType::OR) {
+            parse_tree = ParseTree {
+                parse_type: ParseType::BINCOMP,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(left);
+            parse_tree.children.push(self.logic_andable()?);
+            left = Some(parse_tree);
+        }
+
+        Ok(left)
+    }
+
+    // TODO
+    fn logic_andable(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // < logic-paren >
+        let mut left = self.logic_paren()?;
+
+        let mut parse_tree: ParseTree;
+
+        // < logic-andable' >
+        while self.has(&lexer::TokenType::AND) {
+            parse_tree = ParseTree {
+                parse_type: ParseType::BINCOMP,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(left);
+            parse_tree.children.push(self.logic_paren()?);
+            left = Some(parse_tree);
+        }
+
+        Ok(left)
+    }
+
+    fn logic_paren(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        if self.has(&lexer::TokenType::LPAREN) {
+            self.next()?;
+            let condition_tree = self.condition();
+            self.eat(&lexer::TokenType::RPAREN)?;
+            return condition_tree;
+        }
+
+        self.comparable()
+    }
+
+    // TODO
+    fn comparable(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        let mut left: Option<ParseTree> = Some( ParseTree {
+            parse_type: ParseType::INVALID,
             token: NULL_TOKEN.clone(),
-            children: Vec::new()
+            children: Vec::new(),
+        });
+        
+        // < comparable >
+        if self.has(&ID_TYPE) {
+            let id_tree = self.id()?;
+
+            // < comparable' >
+            if self.has(&lexer::TokenType::IS) {
+                // < linked or not >
+                self.next()?;
+                if self.has(&lexer::TokenType::LINKED) {
+                    let mut parse_tree = ParseTree {
+                        parse_type: ParseType::ISLINKED,
+                        token:  self.curr_token(),
+                        children: Vec::new(),
+                    };
+                    parse_tree.children.push(self.reference2(id_tree)?);
+                    self.next()?;
+                    return Ok(Some(parse_tree));
+                }
+                else {
+                    self.eat(&lexer::TokenType::WORDNOT)?;
+                    let mut parse_tree = ParseTree {
+                        parse_type: ParseType::ISNOTLINKED,
+                        token: self.curr_token(),
+                        children: Vec::new(),
+                    };
+                    parse_tree.children.push(self.reference2(id_tree)?);
+                    self.eat(&lexer::TokenType::LINKED)?;
+                    return Ok(Some(parse_tree));
+                }
+            }
+            else {
+                left = self.resolvable2(id_tree)?;
+            }
+        }
+
+        let mut parse_tree: ParseTree = ParseTree {
+            parse_type: ParseType::INVALID,
+            token: NULL_TOKEN.clone(),
+            children: Vec::new(),
         };
+
+        // < comparable'' >
+        if self.has(&lexer::TokenType::GT) ||
+           self.has(&lexer::TokenType::LT) ||
+           self.has(&lexer::TokenType::GE) ||
+           self.has(&lexer::TokenType::LE) ||
+           self.has(&lexer::TokenType::EQ) ||
+           self.must_be(&lexer::TokenType::NE) {
+            parse_tree = ParseTree {
+                parse_type: ParseType::BINCOMP,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(left);
+            self.next()?;
+            parse_tree.children.push(self.resolvable()?);
+        }
 
         Ok(Some(parse_tree))
     }
@@ -755,26 +933,441 @@ impl Parser {
         Ok(Some(parse_tree))
     }
 
-    //TODO
     fn reference(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        let id_tree = self.id()?;
+        self.reference2(id_tree)
+    }
+
+    //TODO
+    fn reference2(&mut self, id_tree: Option<ParseTree>) -> Result<Option<ParseTree>, &'static str> {
+        if self.has(&lexer::TokenType::LBRACKET) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::GETINDEX,
+                token: NULL_TOKEN.clone(),
+                children: Vec::new(),
+            };
+            self.next()?;
+            parse_tree.children.push(id_tree);
+            parse_tree.children.push(self.index()?);
+            self.eat(&lexer::TokenType::RBRACKET);
+
+            return self.reference2(Some(parse_tree));
+        }
+        else if self.has(&lexer::TokenType::PERIOD) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::GETSTRUCT,
+                token: NULL_TOKEN.clone(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(id_tree);
+            parse_tree.children.push(self.id()?);
+            return self.reference2(Some(parse_tree));
+        }
+
+        Ok(id_tree)
+    }
+
+
+    fn index(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        let mut parse_tree = ParseTree{
+            parse_type: ParseType::INDEX,
+            token: self.curr_token(),
+            children: Vec::new()
+        };
+
+        while !self.has(&lexer::TokenType::RBRACKET) {
+            parse_tree.children.push(self.resolvable()?);
+
+            if self.has(&lexer::TokenType::COMMA) {
+                self.next()?;
+            }
+        }
+
+        Ok(Some(parse_tree))
+    }
+
+    fn resolvable(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        self.bit_orable()
+    }
+
+    //TODO
+    fn resolvable2(&mut self, id_tree: Option<ParseTree>) -> Result<Option<ParseTree>, &'static str> {
+        // < ref-or-call >
+        let mut left = self.ref_or_call(id_tree)?;
+
+        // < factor' >
+        if self.has(&lexer::TokenType::POW){
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::BINOP,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(left);
+            self.next()?;
+            parse_tree.children.push(self.factor()?);
+            left = Some(parse_tree);
+        }
+
+        // < term' >
+        while self.has(&lexer::TokenType::MUL) ||
+              self.has(&lexer::TokenType::DIV) ||
+              self.has(&lexer::TokenType::MOD) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::BINOP,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(left);
+            self.next()?;
+            parse_tree.children.push(self.factor()?);
+            left = Some(parse_tree);
+        }
+
+        // < expression' >
+        while self.has(&lexer::TokenType::ADD) ||
+              self.has(&lexer::TokenType::SUB) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::BINOP,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(left);
+            self.next()?;
+            parse_tree.children.push(self.term()?);
+            left = Some(parse_tree);
+        }
+
+        // < bit-shiftable' >
+        while self.has(&lexer::TokenType::BSL) ||
+           self.has(&lexer::TokenType::BSR) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::BINOP,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(left);
+            self.next()?;
+            parse_tree.children.push(self.expression()?);
+            left = Some(parse_tree);
+        }
+
+        // < bit-andable' >
+        while self.has(&lexer::TokenType::BAND) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::BINOP,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(left);
+            self.next()?;
+            parse_tree.children.push(self.bit_shiftable()?);
+            left = Some(parse_tree);
+        }
+
+        // < bit-xorable' >
+        while self.has(&lexer::TokenType::BXOR) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::BINOP,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(left);
+            self.next()?;
+            parse_tree.children.push(self.bit_andable()?);
+            left = Some(parse_tree);
+        }
+
+        // < bit-orable' >
+        while self.has(&lexer::TokenType::BOR) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::BINOP,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(left);
+            self.next()?;
+            parse_tree.children.push(self.bit_xorable()?);
+            left = Some(parse_tree);
+        }
+        
+        Ok(left)
+    }
+
+    fn arg_list(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        self.eat(&lexer::TokenType::LPAREN)?;
+
+        // handle the empty argument list
+        if self.has(&lexer::TokenType::RPAREN) {
+            self.next()?;
+            return Ok(None);
+        }
+
+        let mut parse_tree = ParseTree {
+            parse_type: ParseType::ARGS,
+            token: NULL_TOKEN.clone(),
+            children: Vec::new(),
+        };
+
+        while !self.has(&lexer::TokenType::RPAREN) {
+            parse_tree.children.push(self.resolvable()?);
+
+            if self.has(&lexer::TokenType::COMMA) {
+                self.next()?;
+            }
+        }
+
+        self.eat(&lexer::TokenType::RPAREN)?;
+
+        Ok(Some(parse_tree))
+    }
+
+    fn bit_orable(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // < bit-orable >
+        let mut left = self.bit_xorable()?;
+
+
+        // < bit-orable' >
+        while self.has(&lexer::TokenType::BOR) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::BINOP,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(left);
+            self.next()?;
+            parse_tree.children.push(self.bit_xorable()?);
+            left = Some(parse_tree);
+        }
+
+        Ok(left)
+    }
+
+    fn bit_xorable(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // < bit-xorable >
+        let mut left = self.bit_andable()?;
+
+
+        // < bit-xorable' >
+        while self.has(&lexer::TokenType::BXOR) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::BINOP,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(left);
+            self.next()?;
+            parse_tree.children.push(self.bit_andable()?);
+            left = Some(parse_tree);
+        }
+
+        Ok(left)
+    }
+
+    fn bit_andable(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // < bit-andable >
+        let mut left = self.bit_shiftable()?;
+
+
+        // < bit-andable' >
+        while self.has(&lexer::TokenType::BAND) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::BINOP,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(left);
+            self.next()?;
+            parse_tree.children.push(self.bit_shiftable()?);
+            left = Some(parse_tree);
+        }
+
+        Ok(left)
+    }
+
+    fn bit_shiftable(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // < bit-shiftable >
+        let mut left = self.expression()?;
+
+
+        // < bit-shiftable' >
+        while self.has(&lexer::TokenType::BSL) ||
+           self.has(&lexer::TokenType::BSR) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::BINOP,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(left);
+            self.next()?;
+            parse_tree.children.push(self.expression()?);
+            left = Some(parse_tree);
+        }
+
+        Ok(left)
+    }
+
+    fn expression(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // < expression >
+        let mut left = self.term()?;
+
+
+        // < expression' >
+        while self.has(&lexer::TokenType::ADD) ||
+              self.has(&lexer::TokenType::SUB) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::BINOP,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(left);
+            self.next()?;
+            parse_tree.children.push(self.term()?);
+            left = Some(parse_tree);
+        }
+
+        Ok(left)
+    }
+
+    fn term(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // < term >
+        let mut left = self.factor()?;
+
+
+        // < term' >
+        while self.has(&lexer::TokenType::MUL) ||
+              self.has(&lexer::TokenType::DIV) ||
+              self.has(&lexer::TokenType::MOD) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::BINOP,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(left);
+            self.next()?;
+            parse_tree.children.push(self.factor()?);
+            left = Some(parse_tree);
+        }
+
+        Ok(left)
+    }
+
+    fn factor(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // < factor >
+        if self.has(&lexer::TokenType::SUB) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::NEG,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            self.next()?;
+            parse_tree.children.push(self.factor()?);
+            return Ok(Some(parse_tree));
+        }
+
+        let mut left = self.bit_notable()?;
+
+        // < factor' >
+        if self.has(&lexer::TokenType::POW){
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::BINOP,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(left);
+            self.next()?;
+            parse_tree.children.push(self.factor()?);
+            left = Some(parse_tree);
+        }
+
+        Ok(left)
+    }
+
+    fn bit_notable(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // < bit-notable >
+        if self.has(&lexer::TokenType::BNOT) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::BITNOT,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            self.next()?;
+            parse_tree.children.push(self.exponent()?);
+            return Ok(Some(parse_tree));
+        }
+
+        self.exponent()
+    }
+
+    fn exponent(&mut self) -> Result<Option<ParseTree>, &'static str> {
+
+        if self.has(&lexer::TokenType::ADD) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::ABS,
+                token: self.curr_token(),
+                children: Vec::new(),
+            };
+            self.next()?;
+            parse_tree.children.push(self.exponent()?);
+            return Ok(Some(parse_tree));
+        }
+        else if self.has(&lexer::TokenType::LPAREN) {
+            self.next()?;
+            let resolvable_tree = self.resolvable();
+            self.eat(&lexer::TokenType::RPAREN);
+            return resolvable_tree;
+        }
+        else if self.has(&NUMBER_TYPE) ||
+                self.has(&TEXT_TYPE)   {
+            let parse_tree = ParseTree {
+                parse_type: ParseType::LIT,
+                token: self.curr_token(),
+                children: Vec::new()
+            };
+            self.next()?;
+            return Ok(Some(parse_tree))
+        }
+        else if self.has(&ID_TYPE) {
+            let id_tree = self.id()?;
+            return self.ref_or_call(id_tree);
+        }
+        else if self.has(&lexer::TokenType::LCURLY) {
+            return self.array_struct_lit();
+        }
+        else {
+            println!("{:?}\nI don't know how we got here", self.curr_token());
+            self.next();
+            return Ok(None);
+        }
+    }
+
+    //TODO
+    fn ref_or_call(&mut self, id_tree: Option<ParseTree>) -> Result<Option<ParseTree>, &'static str> {
+        // < call >
+        if self.has(&lexer::TokenType::LPAREN) {
+            let mut parse_tree = ParseTree {
+                parse_type: ParseType::CALL,
+                token: NULL_TOKEN.clone(),
+                children: Vec::new(),
+            };
+            parse_tree.children.push(id_tree);
+            // < arg-list > techinically handles the RPAREN
+            // and the case of no arguments, though they should
+            // be handled here
+            parse_tree.children.push(self.arg_list()?);
+            return Ok(Some(parse_tree));
+        }
+
+        // < reference >
+        self.reference2(id_tree)
+    }
+
+    //TODO
+    fn array_struct_lit(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut parse_tree = ParseTree{
             parse_type: ParseType::QUIT,
             token: NULL_TOKEN.clone(),
             children: Vec::new()
         };
-
-        Ok(Some(parse_tree))
-    }
-
-    //TODO
-    fn resolvable(&mut self) -> Result<Option<ParseTree>, &'static str> {
-        let mut parse_tree = ParseTree{
-            parse_type: ParseType::QUIT,
-            token: self.curr_token(),
-            children: Vec::new()
-        };
-
-        self.next()?;
 
         Ok(Some(parse_tree))
     }
