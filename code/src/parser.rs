@@ -162,6 +162,7 @@ impl Parser {
             lexer: lexer,
             in_fun_def: false,
             in_loop_block: false,
+            in_if_block: false,
         })
     }
 
@@ -449,7 +450,9 @@ impl Parser {
 
         parse_tree.children.push(self.fun_return_type()?);
 
+        self.in_fun_def = true;
         parse_tree.children.push(self.statements()?);
+        self.in_fun_def = false;
 
         self.eat(&lexer::TokenType::END)?;
         self.eat(&lexer::TokenType::FUN)?;
@@ -472,32 +475,6 @@ impl Parser {
         parse_tree.children.push(None);
 
         self.next()?;
-
-        Ok(Some(parse_tree))
-    }
-
-    //TODO
-    fn fun_statements(&mut self) -> Result<Option<ParseTree>, &'static str> {
-        let mut parse_tree = ParseTree{
-            parse_type: ParseType::BLOCK,
-            token: NULL_TOKEN.clone(),
-            children: Vec::new()
-        };
-
-        while !self.has(&lexer::TokenType::END) {
-            if self.has(&lexer::TokenType::RETURN) {
-                let return_tree = ParseTree {
-                    parse_type: ParseType::RETURN,
-                    token: NULL_TOKEN.clone(),
-                    children: Vec::new(),
-                };
-                self.next()?;
-
-                // there may be a return value, for now
-                // this will have to wait until 'horrible' is
-                // completed
-            }
-        }
 
         Ok(Some(parse_tree))
     }
@@ -570,7 +547,35 @@ impl Parser {
             children: Vec::new()
         };
 
-        while !self.has(&lexer::TokenType::END) & !self.has(&lexer::TokenType::EOF) {
+        while !self.has(&lexer::TokenType::END) && !(self.in_if_block && self.has(&lexer::TokenType::ELSE)) {
+            if self.in_fun_def && self.has(&lexer::TokenType::RETURN) {
+                parse_tree.children.push(self.return_statement()?);
+                self.next()?;
+            }
+            else if self.in_loop_block && self.has(&lexer::TokenType::BREAK) {
+                let break_tree = ParseTree {
+                    parse_type: ParseType::BREAK,
+                    token: self.curr_token(),
+                    children: Vec::new(),
+                };
+                self.next()?;
+                parse_tree.children.push(Some(break_tree));
+            }
+            else if self.in_loop_block && self.has(&lexer::TokenType::CONTINUE) {
+                let continue_tree = ParseTree {
+                    parse_type: ParseType::CONTINUE,
+                    token: self.curr_token(),
+                    children: Vec::new(),
+                };
+                self.next()?;
+                parse_tree.children.push(Some(continue_tree));
+            }
+            else {
+                parse_tree.children.push(self.statement()?);
+            }
+        }
+
+        while !self.has(&lexer::TokenType::END) && !self.has(&lexer::TokenType::EOF) {
             parse_tree.children.push(self.statement()?);
         }
 
@@ -609,7 +614,7 @@ impl Parser {
     }
 
     //TODO
-    fn assign_or_var_def(&mut self) -> Result<Option<ParseTree>, &'static str> {
+    fn return_statement(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut parse_tree = ParseTree{
             parse_type: ParseType::QUIT,
             token: NULL_TOKEN.clone(),
@@ -622,6 +627,18 @@ impl Parser {
     }
 
     //TODO
+    fn assign_or_var_def(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        let mut parse_tree = ParseTree{
+            parse_type: ParseType::QUIT,
+            token: NULL_TOKEN.clone(),
+            children: Vec::new()
+        };
+
+        self.next()?;
+
+        Ok(Some(parse_tree))
+    }
+
     fn while_block(&mut self) -> Result<Option<ParseTree>, &'static str> {
         self.eat(&lexer::TokenType::WHILE)?;
         
@@ -632,7 +649,10 @@ impl Parser {
         };
 
         parse_tree.children.push(self.condition()?);
+
+        self.in_loop_block = true;
         parse_tree.children.push(self.statements()?);
+        self.in_loop_block = false;
 
         self.eat(&lexer::TokenType::END)?;
         self.eat(&lexer::TokenType::WHILE)?;
@@ -640,7 +660,6 @@ impl Parser {
         Ok(Some(parse_tree))
     }
 
-    //TODO
     fn if_block(&mut self) -> Result<Option<ParseTree>, &'static str> {
         self.eat(&lexer::TokenType::IF)?;
         
@@ -654,45 +673,38 @@ impl Parser {
         
         self.eat(&lexer::TokenType::THEN)?;
 
+        self.in_if_block = true;
         parse_tree.children.push(self.statements()?);
+        self.in_if_block = false;
 
-        if self.has(&lexer::TokenType::ELSE) {
-            parse_tree.children.push(self.if_block_2()?);
-        }
-        else {
-            parse_tree.children.push(None);
-        }
-
-        self.eat(&lexer::TokenType::END)?;
-        self.eat(&lexer::TokenType::IF)?;
+        parse_tree.children.push(self.if_block_2()?);
 
         Ok(Some(parse_tree))
     }
 
-    //TODO
     fn if_block_2(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        
+        if self.has(&lexer::TokenType::END) {
+            self.eat(&lexer::TokenType::END)?;
+            self.eat(&lexer::TokenType::IF)?;
+            return None;
+        }
+
         self.eat(&lexer::TokenType::ELSE)?;
 
         if self.has(&lexer::TokenType::IF) {
-            let mut parse_tree = ParseTree {
-                parse_type: ParseType::IF,
-                token: NULL_TOKEN.clone(),
-                children: Vec::new()
-            };
-
-            parse_tree.children.push(self.condition()?);
-            parse_tree.children.push(self.statements()?);
-
-            return Ok(Some(parse_tree));
+            return self.if_block()?;
         }
 
-        let mut parse_tree = ParseTree{
-            parse_type: ParseType::QUIT,
-            token: NULL_TOKEN.clone(),
-            children: Vec::new()
-        };
+        // we don't need to set self.in_if_block here
+        // because we shouldn't be seeing another else
+        // if this is final else
+        let else_block = self.statements()?;
 
-        Ok(Some(parse_tree))
+        self.eat(&lexer::TokenType::END)?;
+        self.eat(&lexer::TokenType::IF)?;
+
+        Ok(Some(else_block))
     }
 
     //TODO
@@ -717,12 +729,11 @@ impl Parser {
         Ok(Some(parse_tree))
     }
 
-    //TODO
     fn unlink(&mut self) -> Result<Option<ParseTree>, &'static str> {
         self.eat(&lexer::TokenType::UNLINK)?;
 
         let mut parse_tree = ParseTree{
-            parse_type: ParseType::QUIT,
+            parse_type: ParseType::UNLINK,
             token: NULL_TOKEN.clone(),
             children: Vec::new()
         };
