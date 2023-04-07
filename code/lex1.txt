@@ -1,5 +1,19 @@
-program
+definitions
 
-    1 + (-2) ^ -3 + -----4
+    STruCture person
+        name: text
+        age: number
+    end structure
+
+    function f(x: changeable Person) returns nothing
+        print(Person.age)
+    end function
+
+end definitions
+
+program
+    s: PERSON = { "Bill", 100 }
+
+    f(s)
 
 end program

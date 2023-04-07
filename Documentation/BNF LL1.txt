@@ -20,7 +20,7 @@
 < global-defs >          ::= < global-def > < global-defs >
                            | ''
 
-< global-def >           ::= < variable-def >
+< global-def >           ::= < assign_or_var_def >
 
 < function-defs >        ::= (function) < function-def > < function-defs >
                            | ''
@@ -144,9 +144,9 @@
 
 < repeat >               ::= REPEAT < repeat' >
 
-< repeat' >              ::= < loop-statements > END REPEAT
+< repeat' >              ::= FOREVER < loop-statements > END REPEAT
                            | NUMBER TIMES < loop-statements > END REPEAT
-                           | FOR ALL ID IN ID < loop-statements > END REPEAT
+                           | FOR ALL ID IN < resolvable > < loop-statements > END REPEAT
 
 < condition >            ::= < logic-andable > < condition' >
 						   
