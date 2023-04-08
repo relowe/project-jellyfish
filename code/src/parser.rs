@@ -75,7 +75,7 @@ pub enum ParseType {
     INVALID,       // an invalid parse instruction, just for placeholding
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ParseTree {
     parse_type: ParseType,
     token: lexer::Token,
@@ -1581,7 +1581,11 @@ pub fn main() {
         p = Parser::from_file(fname.to_string()).expect("Could not create lexer");
     }
     else {
-        p = Parser::new("hello, world + 123 - 11.4491 = 12333 test.file \n hello again".to_string()).expect("Could not create lexer");
+        p = Parser::new("
+    program
+        print(\"Hello world!\")
+    end program
+    ".to_string()).expect("Could not create lexer");
     }
 
     let tree = p.parse().expect("Error");
