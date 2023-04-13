@@ -19,7 +19,7 @@ macro_rules! log {
     ($($t:tt)*) => (println!("{}",  &format_args!($ ( $t ) *).to_string() ))
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ParseType {
     CODE,       // the start of all trees
     DEFINITIONS,// the definitions section of the program
@@ -63,11 +63,11 @@ pub enum ParseType {
     STRUCTARG,     // a name, type, and default value
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ParseTree {
-    parse_type: ParseType,
-    token: lexer::Token,
-    children: Vec<Option<ParseTree>>,
+    pub parse_type: ParseType,
+    pub token: lexer::Token,
+    pub children: Vec<Option<ParseTree>>,
 }
 
 impl ParseTree {
