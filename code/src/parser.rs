@@ -77,9 +77,9 @@ pub enum ParseType {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseTree {
-    parse_type: ParseType,
-    token: lexer::Token,
-    children: Vec<Option<ParseTree>>,
+    pub parse_type: ParseType,
+    pub token: lexer::Token,
+    pub children: Vec<Option<ParseTree>>,
 }
 
 impl ParseTree {
