@@ -2,7 +2,7 @@
 
 use std::{env, process};
 use std::collections::HashMap;
-use crate::parser;
+use crate::parser::{ParseTree, Parser};
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct SymbolType {
@@ -167,7 +167,72 @@ impl SymbolTable {
     }
 }
 
-fn main() {
+pub struct SemanticAnalyzer {
+    symbol_table: SymbolTable,
+}
+
+impl SemanticAnalyzer {
+    pub fn new() -> Self {
+        SemanticAnalyzer {
+            symbol_table: SymbolTable::new(),
+        }
+    }
+
+    // CODE tree
+    pub fn analyze(&mut self, tree: &ParseTree) -> Result<(), &'static str> {
+        // DEF (could be None)
+        if tree.children[0].is_some() {
+            self.analyze_definitions(tree.children[0].as_ref().unwrap())?;
+        }
+
+        // BODY (program section)
+        self.analyze_body(tree.children[1].as_ref().unwrap())?;
+        Ok(())
+    }
+
+    // DEFINITION tree
+    fn analyze_definitions(&mut self, tree: &ParseTree) -> Result<(), &'static str> {
+        // struct, global, functions
+
+        tree.print();
+
+        // STRUCT DEFS
+        if tree.children[0].is_some() {
+            self.analyze_struct_defs(tree.children[0].as_ref().unwrap())?;
+        }
+
+        // GLOBAL DEFS
+        if tree.children[1].is_some() {
+            self.analyze_global_defs(tree.children[1].as_ref().unwrap())?;
+        }
+
+        // FUNCTION DEFS
+        if tree.children[2].is_some() {
+            self.analyze_function_defs(tree.children[2].as_ref().unwrap())?;
+        }
+
+        Ok(())
+    }
+
+    fn analyze_struct_defs(&mut self, tree: &ParseTree) -> Result<(), &'static str> {
+        Ok(())
+    }
+
+    fn analyze_global_defs(&mut self, tree: &ParseTree) -> Result<(), &'static str> {
+        Ok(())
+    }
+
+    fn analyze_function_defs(&mut self, tree: &ParseTree) -> Result<(), &'static str> {
+        Ok(())
+    }
+
+    fn analyze_body(&mut self, tree: &ParseTree) -> Result<(), &'static str> {
+        Ok(())
+    }
+}
+
+
+fn symbol_table_test() {
     let mut st = SymbolTable::new();
 
     st.add_type("PERSON".to_string());
@@ -181,4 +246,30 @@ fn main() {
     st.add_symbol("x".to_string(), sym_type);
 
     println! {"{:?}", st};
+}
+
+pub fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    // create parser
+    let mut p: Parser;
+    // if argument, open file
+    if args.len() > 1 {
+        let fname = &args[1];
+        p = Parser::from_file(fname.to_string()).expect("Could not create lexer");
+    }
+    else {
+        p = Parser::new("
+    program
+        print(\"Hello world!\")
+    end program
+    ".to_string()).expect("Could not create lexer");
+    }
+
+    let tree = p.parse().expect("Error");
+
+
+    let mut sa = SemanticAnalyzer::new();
+
+    sa.analyze(tree.as_ref().expect("error"));
 }

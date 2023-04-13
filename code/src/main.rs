@@ -5,5 +5,6 @@ mod parser;
 mod semantic_analyzer;
 
 fn main() {
+    //parser::main()
     semantic_analyzer::main()
 }
