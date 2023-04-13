@@ -1,7 +1,20 @@
 definitions
+    structure Person
+        name: text
+        age: number
+    end structure
+
+    structure Employee
+        person: person
+        salary: number
+    end structure
+
     VAR_X: text = "Hello, World!"
     y: number = 14.6
-    arr: array [1 to 5] of number = { 1, 2, 3, 4 }
+    #arr: array [1 to 5] of number = { 1, 2, 3, 4 }
+
+    function f(l: changeable array of number) returns nothing
+    end function
 end definitions
 program
     # THIS IS A COMMENT 
@@ -10,6 +23,10 @@ program
     else
         print("Goodbye!\n")
     end if
+
+    p: person = { "Tim", 18 }
+
+    e: employee = { p, 1000 }
 
     while a + b / c != 100
         repeat 100 times # Here is a mid-line comment

@@ -267,6 +267,7 @@ impl Parser {
 
     fn structure_defs(&mut self) -> Result<Option<ParseTree>, &'static str> {
         if !self.has(&lexer::TokenType::STRUCT) {
+            println!("Did not see struct, looking at {:?}", self.curr_token());
             return Ok(None);
         }
 
