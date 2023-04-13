@@ -1,13 +1,19 @@
 definitions
 
-    function say_hello() returns nothing
-        print("Hello, World")
+    STruCture person
+        name: text
+        age: number
+    end structure
+
+    function f(x: changeable Person) returns nothing
+        print(Person.age)
     end function
 
 end definitions
 
 program
+    s: PERSON = { "Bill", 100 }
 
-    say_hello()
+    f(s)
 
 end program

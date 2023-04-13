@@ -80,7 +80,6 @@ impl SymbolTable {
     }
 }
 
-
 // Define a struct called SemanticAnalyzer that has a HashMap called symbol_table, which maps strings to Symbols
 pub struct SemanticAnalyzer {
     symbol_table: HashMap<String, Symbol>,

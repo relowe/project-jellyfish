@@ -1,13 +1,13 @@
 definitions
 
-    fucntion bubble_sort(arr: array of number) returns array of number
+    function bubble_sort(arr: array of number) returns array of number
         tmp: number
         start: number = lower_bound(arr)
 
         while start < upper_bound(arr)-1
             ptr: number = start
             while ptr < upper_bound(arr)-1
-                if arr[ptr+1] > arr[ptr]
+                if arr[ptr+1] > arr[ptr] then
                     tmp = arr[ptr]
                     arr[ptr] = arr[ptr+1]
                     arr[ptr+1] = tmp

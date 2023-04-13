@@ -7,10 +7,12 @@ program
     # THIS IS A COMMENT 
     if x <= y then
         print("Hello!\n")
+    else
+        print("Goodbye!\n")
     end if
 
     while a + b / c != 100
-        repeat 100 # Here is a mid-line comment
+        repeat 100 times # Here is a mid-line comment
             print(a)
         END repeat
     end while

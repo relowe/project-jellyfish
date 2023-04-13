@@ -20,24 +20,24 @@
 < global-defs >          ::= < global-def > < global-defs >
                            | ''
 
-< global-def >           ::= < variable-def >
+< global-def >           ::= < assign_or_var_def >
 
 < function-defs >        ::= (function) < function-def > < function-defs >
                            | ''
 
-< function-def >         ::= FUN ID LPAREN < fun-def-args > RPAREN 
+< function-def >         ::= FUN ID LPAREN < parameters > RPAREN 
                               RETURNS < fun-return-type > < fun-statements > 
                               END FUN
 
-< fun-def-args >         ::= < fun-def-arg > < fun-def-args' >
+< parameters >         ::= < parameter > < parameters' >
 						   
-< fun-def-args' >        ::= COMMA < fun-def-args'' >
+< parameters' >        ::= COMMA < parameters'' >
 						   | ''
 						   
-< fun-def-args'' >		 ::= < fun-def-arg > < fun-def-args' >
+< parameters'' >		 ::= < parameter > < parameters' >
 						   | ''
 
-< fun-def-arg >          ::= ID COLON < changeable > < fun-arg-type >
+< parameter >          ::= ID COLON < changeable > < fun-arg-type >
 
 < changeable >            ::= CHANGEABLE
                            | ''
@@ -57,8 +57,8 @@
 < fun-statement >        ::= RETURN < return-value >
                            | < statement >
 
-< return-value >         ::= < resolvable >
-                           | ''
+< return-value >         ::= NOTHING
+                           | < resolvable >
 
 ==================================================================================
 
@@ -75,11 +75,11 @@
                            | QUIT
                            | (*otherwise...) < resolvable >
 						   
-< asg or var-def >		 ::= (EQ) < assignment >
-						   | (COLON) < variable-def >
-						   | (*otherwise...) < resolvable >
+< asg or var-def >		 ::= (ID) (EQ) < assignment >
+						   | (ID) (COLON) < variable-def >
+						   | (*otherwise...) < reference > < resolvable' >
 
-< unlink >               ::= UNLINKL < reference >
+< unlink >               ::= UNLINK < reference >
 
 < loop-statements >      ::= < loop-statement > < loop-statements >
                            | ''
@@ -103,7 +103,7 @@
 
 < variable-type >        ::= < basic-type >
                            | ARRAY < type or bounds >
-                           | LINK 'to' < basic-type >
+                           | LINK TO < basic-type >
 
 
 < type or bounds >       ::= OF < basic-type >
@@ -127,8 +127,10 @@
 < bound' >				 ::= TO < resolvable >
 						   | ''
 
-< assignment >           ::= (ID) < reference > EQ < resolvable >
-                           | LINK TO < reference >
+< assignment >           ::= < reference > EQ < assignment' >
+
+< assignment' >          ::= LINK TO < reference >
+                           | < resolvable >
 
 < while >                ::= WHILE < condition > < loop-statements > END 'while'
 
@@ -142,9 +144,9 @@
 
 < repeat >               ::= REPEAT < repeat' >
 
-< repeat' >              ::= < loop-statements > END REPEAT
+< repeat' >              ::= FOREVER < loop-statements > END REPEAT
                            | NUMBER TIMES < loop-statements > END REPEAT
-                           | FOR ALL ID IN ID < loop-statements > END REPEAT
+                           | FOR ALL ID IN < resolvable > < loop-statements > END REPEAT
 
 < condition >            ::= < logic-andable > < condition' >
 						   
@@ -153,21 +155,24 @@
 
 < logic-andable >        ::= < logic-paren >  < logic-andable' >
 
-< logic-andable >        ::= AND < logic-paren > < logic-andable' >
+< logic-andable' >       ::= AND < logic-paren > < logic-andable' >
                            | ''
 
 < logic-paren >          ::= LPAREN < condition > RPAREN
                            | < comparable >
 
-< comparable >           ::= < resolvable > < comparable' >
+< comparable >           ::= ID < comparable' >
+                           | < resolvable > < comparable'' >
 
-< comparable' >          ::= GT < resolvable >
+< comparable' >          ::= IS < linked or not >
+                           | < resolvable' > < comparable'' >
+
+< comparable'' >         ::= GT < resolvable >
                            | LT < resolvable >
                            | GE < resolvable >
                            | LE < resolvable >
                            | EQ < resolvable >
                            | NE < resolvable >
-                           | IS < linked or not >
 
 < linked or not >        ::= LINKED
 						   | WORDNOT LINKED
@@ -209,7 +214,7 @@
                            | MOD < term >
                            | ''
 
-< factor >               ::= < exponent > < factor' >
+< factor >               ::= < bit-notable > < factor' >
                            | SUB < factor >
 
 < factor' >              ::= POW < factor >
@@ -244,8 +249,8 @@
 
 < reference >            ::= ID < reference' >
 
-< reference' >           ::= LBRACKET < index > RBRACKET
-                           | PERIOD ID
+< reference' >           ::= LBRACKET < index > RBRACKET < reference' >
+                           | PERIOD ID < reference' >
 						   | ''
 
 

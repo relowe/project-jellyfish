@@ -54,9 +54,11 @@ pub enum TokenType {
     ELSE,      // else
     WHILE,     // while
     REPEAT,    // repeat
+    FOREVER,   // forever
     TIMES,     // times
     FOR,       // for
     ALL,       // all
+    IN,        // in
     AND,       // and
     OR,        // or
     BOR,       // bit_or
@@ -370,9 +372,11 @@ impl Lexer {
             "else" => TokenType::ELSE,
             "while" => TokenType::WHILE,
             "repeat" => TokenType::REPEAT,
+            "forever" => TokenType::FOREVER,
             "times" => TokenType::TIMES,
             "for" => TokenType::FOR,
             "all" => TokenType::ALL,
+            "in" => TokenType::IN,
             "and" => TokenType::AND,
             "or" => TokenType::OR,
             "bit_or" => TokenType::BOR,
