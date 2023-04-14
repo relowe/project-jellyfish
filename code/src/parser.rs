@@ -58,9 +58,7 @@ pub enum ParseType {
     BOUNDS,     // bounds for an array
     BOUND,      // a single bound for an array
     GETINDEX,      // return the index of an array
-    SETINDEX,      // set a value at an array index
     GETSTRUCT,     // get the value of a structure key
-    SETSTRUCT,     // st the value of a structure key
     CALL,          // call a function
     ARGS,          // list of values (arguments)
     PARAMS,        // list of params
@@ -152,8 +150,8 @@ impl ParseTree {
 pub struct Parser {
     lexer: lexer::Lexer,
     in_fun_def: bool,
-    in_loop_block: bool,
-    in_if_block: bool,
+    in_loop_block: i32,
+    in_if_block: i32,
 }
 
 impl Parser {
@@ -164,8 +162,8 @@ impl Parser {
         Ok(Parser {
             lexer: lexer,
             in_fun_def: false,
-            in_loop_block: false,
-            in_if_block: false,
+            in_loop_block: 0,
+            in_if_block: 0,
         })
     }
 
@@ -175,8 +173,8 @@ impl Parser {
         Ok(Parser {
             lexer: lexer,
             in_fun_def: false,
-            in_loop_block: false,
-            in_if_block: false,
+            in_loop_block: 0,
+            in_if_block: 0,
         })
     }
 
@@ -267,7 +265,6 @@ impl Parser {
 
     fn structure_defs(&mut self) -> Result<Option<ParseTree>, &'static str> {
         if !self.has(&lexer::TokenType::STRUCT) {
-            println!("Did not see struct, looking at {:?}", self.curr_token());
             return Ok(None);
         }
 
@@ -546,14 +543,16 @@ impl Parser {
             children: Vec::new()
         };
 
-        while !self.has(&lexer::TokenType::END) && 
-              !self.has(&lexer::TokenType::EOF) &&
-              !(self.in_if_block && self.has(&lexer::TokenType::ELSE)) {
+        while !(self.has(&lexer::TokenType::END) || 
+              self.has(&lexer::TokenType::EOF)) {
+            if self.in_if_block > 0 && self.has(&lexer::TokenType::ELSE) {
+                break;
+            }
+
             if self.in_fun_def && self.has(&lexer::TokenType::RETURN) {
                 parse_tree.children.push(self.return_statement()?);
-                self.next()?;
             }
-            else if self.in_loop_block && self.has(&lexer::TokenType::BREAK) {
+            else if self.in_loop_block > 0 && self.has(&lexer::TokenType::BREAK) {
                 let break_tree = ParseTree {
                     parse_type: ParseType::BREAK,
                     token: self.curr_token(),
@@ -562,7 +561,7 @@ impl Parser {
                 self.next()?;
                 parse_tree.children.push(Some(break_tree));
             }
-            else if self.in_loop_block && self.has(&lexer::TokenType::CONTINUE) {
+            else if self.in_loop_block > 0 && self.has(&lexer::TokenType::CONTINUE) {
                 let continue_tree = ParseTree {
                     parse_type: ParseType::CONTINUE,
                     token: self.curr_token(),
@@ -593,7 +592,7 @@ impl Parser {
 
     fn return_statement(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut parse_tree = ParseTree{
-            parse_type: ParseType::QUIT,
+            parse_type: ParseType::RETURN,
             token: self.curr_token(), // replace w null
             children: Vec::new()
         };
@@ -695,9 +694,9 @@ impl Parser {
 
         parse_tree.children.push(self.condition()?);
 
-        self.in_loop_block = true;
+        self.in_loop_block += 1;
         parse_tree.children.push(self.statements()?);
-        self.in_loop_block = false;
+        self.in_loop_block -= 1;
 
         self.eat(&lexer::TokenType::END)?;
         self.eat(&lexer::TokenType::WHILE)?;
@@ -718,9 +717,9 @@ impl Parser {
         
         self.eat(&lexer::TokenType::THEN)?;
 
-        self.in_if_block = true;
+        self.in_if_block += 1;
         parse_tree.children.push(self.statements()?);
-        self.in_if_block = false;
+        self.in_if_block -= 1;
 
         parse_tree.children.push(self.if_block_2()?);
 
@@ -926,9 +925,9 @@ impl Parser {
             self.eat(&lexer::TokenType::TIMES)?;
         }
 
-        self.in_loop_block = true;
+        self.in_loop_block += 1;
         parse_tree.children.push(self.statements()?);
-        self.in_loop_block = false;
+        self.in_loop_block -= 1;
 
         self.eat(&lexer::TokenType::END)?;
         self.eat(&lexer::TokenType::REPEAT)?;

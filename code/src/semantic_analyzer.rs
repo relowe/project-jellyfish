@@ -5,11 +5,18 @@ use std::collections::HashMap;
 use crate::lexer::{TokenType};
 use crate::parser::{ParseTree, Parser, ParseType};
 
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, Debug)]
 pub struct SymbolType {
     basic_type: String,
     is_pointer: bool,
-    is_array: bool,
+    array_dimensions: i32,
+}
+
+impl PartialEq for SymbolType {
+    fn eq(&self, other: &Self) -> bool {
+        self.basic_type == other.basic_type &&
+        self.array_dimensions == other.array_dimensions
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -265,7 +272,12 @@ impl SemanticAnalyzer {
 
     fn analyze_global_defs(&mut self, tree: &ParseTree) -> Result<(), String> {
         for child in &tree.children {
-            self.analyze_assignment(child.as_ref().unwrap())?;
+            if child.as_ref().unwrap().parse_type == ParseType::ASSIGN {
+                self.analyze_assignment(child.as_ref().unwrap())?;
+            }
+            else {
+                self.analyze_vardef(child.as_ref().unwrap())?;
+            }
         }
         
         Ok(())
@@ -331,23 +343,23 @@ impl SemanticAnalyzer {
     fn analyze_assignment(&mut self, tree: &ParseTree) -> Result<(), String> {
         //tree.print();
         let left_type: SymbolType;
+
+        // VARDEF
         if tree.children[0].as_ref().unwrap().parse_type == ParseType::VARDEF {
             left_type = self.analyze_vardef(tree.children[0].as_ref().unwrap())?;
         }
         else {
-            left_type = self.symbol_table.find_symbol(unwrap_id_tree(tree.children[0].as_ref().unwrap()))?;
+            left_type = self.analyze_reference(tree.children[0].as_ref().unwrap())?;
         }
 
         self.expected_resolve_type = Some(left_type.clone());
-
         let right_type = self.analyze_resolvable(tree.children[1].as_ref().unwrap())?;
-
         self.expected_resolve_type = None;
 
         //println!("Comparing types \n\t{:?}\n\t{:?}", left_type, right_type);
 
         if left_type != right_type {
-            return Err("Type mismatch".to_string());
+            return Err(format!{"Type mismatch between {:?} and {:?}", left_type, right_type});
         }
 
         Ok(())
@@ -355,47 +367,44 @@ impl SemanticAnalyzer {
 
     fn analyze_type(&mut self, tree: &ParseTree) -> Result<SymbolType, String> {
         //tree.print();
-        
-        // Handle TYPE tree (most basic one)
-        if tree.parse_type == ParseType::TYPE {
-            let basic_type = unwrap_type_tree(&tree);
-            return Ok(SymbolType{
-                basic_type: basic_type,
-                is_array: false,
-                is_pointer: false,
-            });
+
+        let mut curr_tree = tree;
+        let mut is_pointer = false;
+        let mut array_dimensions = 0;
+
+        if curr_tree.parse_type == ParseType::POINTER {
+            is_pointer = true;
+            curr_tree = curr_tree.children[0].as_ref().unwrap();
         }
 
-        // Handle ARRAYDEF tree
-        if tree.parse_type == ParseType::ARRAYDEF {
-            let basic_type = unwrap_type_tree(tree.children[1].as_ref().unwrap());
-            return Ok(SymbolType{
-                basic_type: basic_type,
-                is_array: true,
-                is_pointer: false,
-            });
-        }
+        if curr_tree.parse_type == ParseType::ARRAYDEF {
+            let bounds_tree = curr_tree.children[0].as_ref().unwrap();
 
-        // Handle POINTER tree
-        if tree.parse_type == ParseType::POINTER {
-            if tree.children[0].as_ref().unwrap().parse_type == ParseType::ARRAYDEF {
-                let basic_type = unwrap_type_tree(tree.children[0].as_ref().unwrap().children[1].as_ref().unwrap());
-                return Ok(SymbolType{
-                    basic_type: basic_type,
-                    is_array: true,
-                    is_pointer: true,
-                });
+            for bound in &bounds_tree.children {
+                array_dimensions += 1;
+                let mut bound_type: SymbolType;
+                if bound.as_ref().unwrap().children[0].as_ref().is_some() {
+                    bound_type = self.analyze_resolvable(bound.as_ref().unwrap().children[0].as_ref().unwrap())?;
+                    if bound_type.basic_type != "number".to_string() {
+                        return Err("Cannot set bounds of an array to a non-number!".to_string());
+                    }
+                }
+
+                bound_type = self.analyze_resolvable(bound.as_ref().unwrap().children[1].as_ref().unwrap())?;
+                if bound_type.basic_type != "number".to_string() {
+                    return Err("Cannot set bounds of an array to a non-number!".to_string());
+                }
             }
 
-            let basic_type = unwrap_type_tree(tree.children[0].as_ref().unwrap());
-            return Ok(SymbolType{
-                basic_type: basic_type,
-                is_array: false,
-                is_pointer: true,
-            });
+            curr_tree = curr_tree.children[1].as_ref().unwrap();
         }
 
-        Err("error".to_string())
+        let basic_type = unwrap_type_tree(&curr_tree);
+        Ok(SymbolType{
+            basic_type: basic_type,
+            array_dimensions: array_dimensions,
+            is_pointer: is_pointer,
+        })
     }
 
     fn analyze_resolvable(&mut self, tree: &ParseTree) -> Result<SymbolType, String> {
@@ -403,21 +412,113 @@ impl SemanticAnalyzer {
             return Ok(SymbolType{
                 basic_type: unwrap_lit_tree(&tree),
                 is_pointer: false,
-                is_array: false,
+                array_dimensions: 0,
             });
         }
+
+        else if tree.parse_type == ParseType::BINOP {
+            // Get the types of the left and right children
+            let left_type = self.analyze_resolvable(tree.children[0].as_ref().unwrap())?;
+            let right_type = self.analyze_resolvable(tree.children[0].as_ref().unwrap())?;
+
+            // Check for addition of text
+            if tree.token.token_type == TokenType::ADD &&
+               left_type.basic_type == "text".to_string() &&
+               right_type.basic_type == "text".to_string() &&
+               left_type.array_dimensions == 0 &&
+               right_type.array_dimensions == 0 {
+                return Ok(SymbolType{
+                    basic_type: "text".to_string(),
+                    is_pointer: false,
+                    array_dimensions: 0,
+                });
+            }
+
+            // Otherwise, they both must be numbers (non-arrays)
+            if left_type.basic_type != "number".to_string() ||
+               left_type.array_dimensions != 0 ||
+               right_type.basic_type != "number".to_string() ||
+               right_type.array_dimensions != 0 {
+                return Err("Cannot perform binary operations on non-numbers".to_string());
+            }
+
+            // Return Ok
+            return Ok(SymbolType{
+                basic_type: "number".to_string(),
+                is_pointer: false,
+                array_dimensions: 0,
+            });
+        }
+
+        // copy above for neg, abs, bitnot (with only one child)
+
+        else if tree.parse_type == ParseType::GETINDEX || tree.parse_type == ParseType::GETSTRUCT {
+            return self.analyze_reference(tree);
+        }
         
-        Err("error".to_string())
+        //Err("error".to_string())
+        Ok(SymbolType{
+            basic_type: "number".to_string(),
+            array_dimensions: 1,
+            is_pointer: false,
+        })
+    }
+
+    fn analyze_reference(&mut self, tree: &ParseTree) -> Result<SymbolType, String> {
+        let mut ref_type: SymbolType;
+
+        if tree.parse_type != ParseType::ID {
+            ref_type = self.analyze_reference(tree.children[0].as_ref().unwrap())?;
+
+            if tree.parse_type == ParseType::GETINDEX {
+                let mut arr_dims = ref_type.array_dimensions;
+
+                // check all indecies to make sure they are numbers
+                let index_tree = tree.children[1].as_ref().unwrap();
+                for idx in &index_tree.children {
+                    arr_dims -= 1;
+                    let idx_type = self.analyze_resolvable(idx.as_ref().unwrap())?;
+                    if idx_type.basic_type != "number".to_string() {
+                        return Err("Cannot index using a non-number".to_string());
+                    }
+                }
+
+                return Ok(SymbolType{
+                    basic_type: ref_type.basic_type,
+                    is_pointer: ref_type.is_pointer,
+                    array_dimensions: arr_dims,
+                });
+            }
+
+            else if tree.parse_type == ParseType::GETSTRUCT {
+                let struct_key = unwrap_id_tree(tree.children[1].as_ref().unwrap());
+
+                return self.symbol_table.get_struct_key(ref_type.basic_type, struct_key);
+            }
+        }
+
+        println!("FINDING SYMBOL {}", unwrap_id_tree(&tree));
+        self.symbol_table.find_symbol(unwrap_id_tree(&tree))
     }
 
     fn analyze_vardef(&mut self, tree: &ParseTree) -> Result<SymbolType, String> {
         //tree.print();
         let sym_type = self.analyze_type(tree.children[1].as_ref().unwrap())?;
 
-        let id = unwrap_id_tree(tree.children[0].as_ref().unwrap());
+        if tree.children[0].as_ref().unwrap().parse_type == ParseType::ID {
+            let id = unwrap_id_tree(tree.children[0].as_ref().unwrap());
 
-        println!{"Adding symbol {} of type {:?}", id, sym_type};
-        self.symbol_table.add_symbol(id, sym_type.clone())?;
+            println!{"Adding symbol {} of type {:?}", id, sym_type};
+            self.symbol_table.add_symbol(id, sym_type.clone())?;
+        }
+        else {
+            for id_tree in &tree.children[0].as_ref().unwrap().children {
+                let id = unwrap_id_tree(id_tree.as_ref().unwrap());
+
+                println!{"Adding symbol {} of type  {:?}", id, sym_type};
+                self.symbol_table.add_symbol(id, sym_type.clone())?;
+            }
+        }
         
         Ok(sym_type)
     }
@@ -432,7 +533,7 @@ fn symbol_table_test() {
     let sym_type = SymbolType {
         basic_type: "PERSON".to_string(),
         is_pointer: false,
-        is_array: false,
+        array_dimensions: 0,
     };
 
     st.add_symbol("x".to_string(), sym_type);

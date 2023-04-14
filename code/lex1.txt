@@ -1,19 +1,19 @@
+
 definitions
-
-    STruCture person
-        name: text
-        age: number
-    end structure
-
-    function f(x: changeable Person) returns nothing
-        print(Person.age)
+    function hi() returns nothing
+        if a = 1 then
+            return a
+        else if b = 1 then
+            return b
+        else 
+            return nothing
+        end if
     end function
 
 end definitions
-
 program
-    s: PERSON = { "Bill", 100 }
-
-    f(s)
+    repeat for all x in y
+        print("hi")
+    end repeat
 
 end program

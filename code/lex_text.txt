@@ -7,11 +7,19 @@ definitions
     structure Employee
         person: person
         salary: number
+        p: link to person
     end structure
 
-    VAR_X, VAR_Y, VAR_Z: text = "Hello, World!"
+    VAR_X, VAR_Y, VAR_Z: text
     y: number = 14.6
-    #arr: array [1 to 5] of number = { 1, 2, 3, 4 }
+    arr: array [1 to 5] of number = { 1, 2, 3, 4, 5 }
+    arr[2] = 3
+    pear: person = { "bill", 1 }
+    pear.age = 100
+    arr[0].listset.listA[1] = 5
+    e: employee = {pear, 1, pear}
+    f: link to g = h
+    e.p = pear
 
     function f(l: changeable array of number) returns nothing
     end function
