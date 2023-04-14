@@ -46,69 +46,62 @@ impl SymbolTable {
         st
     }
 
-    fn add_type(&mut self, basic_type: String) -> bool {
+    fn add_type(&mut self, basic_type: String) -> Result<(), String> {
         if self.basic_types.contains(&basic_type) {
-            // Should error on false
-            return false;
+            return Err("Type mismatch".to_string());
         }
 
         self.basic_types.push(basic_type);
 
-        true
+        Ok(())
     }
 
-    fn add_symbol(&mut self, symbol: String, symbol_type: SymbolType) -> bool {
+    fn add_symbol(&mut self, symbol: String, symbol_type: SymbolType) -> Result<(), String> {
         if self.symbols[self.depth].contains_key(&symbol) {
-            return false;
+            return Err(format!("Symbol '{}' already exists", &symbol));
         }
 
         if !self.basic_types.contains(&symbol_type.basic_type) {
-            return false;
+            return Err(format!("Unknown type: {}", &symbol_type.basic_type));
         }
 
         self.symbols[self.depth].insert(symbol, symbol_type);
 
-        true
+        Ok(())
     }
 
     /*
      * check depth currently at, then keep back tracking to find the symbol
      * symbols: Vec<HashMap<String, SymbolType>>
      */
-    fn find_symbol(&mut self, symbol: String) -> SymbolType {
+    fn find_symbol(&mut self, symbol: String) -> Result<SymbolType, String> {
         for i in (0..self.depth+1).rev() {
             if self.symbols[i as usize].contains_key(&symbol) {
-                return self.symbols[i as usize].get(&symbol).unwrap().clone();
+                return Ok(self.symbols[i as usize].get(&symbol).unwrap().clone());
             }
         }
 
-        // do error stuff
-
-        SymbolType {
-            basic_type: "invalid".to_string(),
-            is_pointer: false,
-            is_array: false,
-        }
+        Err(format!("Unknown symbol '{}'", &symbol))
     }
 
     /*
      * checks if the function is already defined
      * checks if all the parameters are valid (types that do exist)
      */
-    fn add_function(&mut self, id: String, obj: FunctionObject) -> bool {
+    fn add_function(&mut self, id: String, obj: FunctionObject) -> Result<(), String> {
         if self.functions.contains_key(&id) {
-            return false;
+            return Err(format!("Function {} has already been defined", &id));
         }
 
         for symbol_type in &obj.params {
             if !self.basic_types.contains(&symbol_type.basic_type) {
-                return false
+                return Err(format!("Unknown type: {}", &symbol_type.basic_type));
             }
         }
 
         self.functions.insert(id, obj);
 
-        true
+        Ok(())
     }
 
     /*
@@ -134,38 +127,38 @@ impl SymbolTable {
      * make sure all struct keys are valid (check symbol table)
      * struct_args: HashMap<String, HashMap<String, SymbolType>>
      */
-    fn add_struct_keys(&mut self, struct_id: String, struct_keys: HashMap<String, SymbolType>) -> bool {
+    fn add_struct_keys(&mut self, struct_id: String, struct_keys: HashMap<String, SymbolType>) -> Result<(), String> {
         if self.struct_args.contains_key(&struct_id) {
-            return false;
+            return Err(format!("Structure {} has already been defined", &struct_id));
         }
 
         for (key, value) in &struct_keys {
             if !self.basic_types.contains(&value.basic_type) {
-                return false;
+                return Err(format!("Unknown type: {}", &value.basic_type));
             }
         }
 
         self.struct_args.insert(struct_id, struct_keys);
-        true
+        Ok(())
     }
 
     /*
      * find the structure and key, if they don't exist, error
      * struct_args: HashMap<String, HashMap<String, SymbolType>>
      */
-    fn get_struct_key(&self, struct_id: String, key_id: String) -> SymbolType {
+    fn get_struct_key(&self, struct_id: String, key_id: String) -> Result<SymbolType, String> {
         // check for structure
         if !self.struct_args.contains_key(&struct_id) {
-            // error lol
+            return Err(format!("Unknown Structure {}", &struct_id));
         }
 
         // check for key
         if !self.struct_args.get(&struct_id).unwrap().contains_key(&key_id) {
-            // error lol
+            return Err(format!("Unknown key {}", &key_id));
         }
 
         // return the SymbolType
-        self.struct_args.get(&struct_id).unwrap().get(&key_id).unwrap().clone()
+        Ok(self.struct_args.get(&struct_id).unwrap().get(&key_id).unwrap().clone())
     }
 }
 
@@ -210,7 +203,7 @@ impl SemanticAnalyzer {
     }
 
     // CODE tree
-    pub fn analyze(&mut self, tree: &ParseTree) -> Result<(), &'static str> {
+    pub fn analyze(&mut self, tree: &ParseTree) -> Result<(), String> {
         // DEF (could be None)
         if tree.children[0].is_some() {
             self.analyze_definitions(tree.children[0].as_ref().unwrap())?;
@@ -222,7 +215,7 @@ impl SemanticAnalyzer {
     }
 
     // DEFINITION tree
-    fn analyze_definitions(&mut self, tree: &ParseTree) -> Result<(), &'static str> {
+    fn analyze_definitions(&mut self, tree: &ParseTree) -> Result<(), String> {
         // struct, global, functions
 
         // STRUCT DEFS
@@ -243,7 +236,7 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
-    fn analyze_struct_defs(&mut self, tree: &ParseTree) -> Result<(), &'static str> {
+    fn analyze_struct_defs(&mut self, tree: &ParseTree) -> Result<(), String> {
         // Add all strucutre names to the basic types
         for struct_def_tree in &tree.children {
             let id = unwrap_id_tree(struct_def_tree.as_ref().unwrap().children[0].as_ref().unwrap());
@@ -270,7 +263,7 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
-    fn analyze_global_defs(&mut self, tree: &ParseTree) -> Result<(), &'static str> {
+    fn analyze_global_defs(&mut self, tree: &ParseTree) -> Result<(), String> {
         for child in &tree.children {
             self.analyze_assignment(child.as_ref().unwrap())?;
         }
@@ -278,7 +271,7 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
-    fn analyze_function_defs(&mut self, tree: &ParseTree) -> Result<(), &'static str> {
+    fn analyze_function_defs(&mut self, tree: &ParseTree) -> Result<(), String> {
         //tree.print();
 
         // Loop through each child, add its function object to symbol table
@@ -331,18 +324,18 @@ impl SemanticAnalyzer {
         Ok(())
     }
 
-    fn analyze_body(&mut self, tree: &ParseTree) -> Result<(), &'static str> {
+    fn analyze_body(&mut self, tree: &ParseTree) -> Result<(), String> {
         Ok(())
     }
 
-    fn analyze_assignment(&mut self, tree: &ParseTree) -> Result<(), &'static str> {
+    fn analyze_assignment(&mut self, tree: &ParseTree) -> Result<(), String> {
         //tree.print();
         let left_type: SymbolType;
         if tree.children[0].as_ref().unwrap().parse_type == ParseType::VARDEF {
             left_type = self.analyze_vardef(tree.children[0].as_ref().unwrap())?;
         }
         else {
-            left_type = self.symbol_table.find_symbol(unwrap_id_tree(tree.children[0].as_ref().unwrap()));
+            left_type = self.symbol_table.find_symbol(unwrap_id_tree(tree.children[0].as_ref().unwrap()))?;
         }
 
         self.expected_resolve_type = Some(left_type.clone());
@@ -354,13 +347,13 @@ impl SemanticAnalyzer {
         //println!("Comparing types \n\t{:?}\n\t{:?}", left_type, right_type);
 
         if left_type != right_type {
-            return Err("Type mismatch");
+            return Err("Type mismatch".to_string());
         }
 
         Ok(())
     }
 
-    fn analyze_type(&mut self, tree: &ParseTree) -> Result<SymbolType, &'static str> {
+    fn analyze_type(&mut self, tree: &ParseTree) -> Result<SymbolType, String> {
         //tree.print();
         
         // Handle TYPE tree (most basic one)
@@ -402,10 +395,10 @@ impl SemanticAnalyzer {
             });
         }
 
-        Err("error")
+        Err("error".to_string())
     }
 
-    fn analyze_resolvable(&mut self, tree: &ParseTree) -> Result<SymbolType, &'static str> {
+    fn analyze_resolvable(&mut self, tree: &ParseTree) -> Result<SymbolType, String> {
         if tree.parse_type == ParseType::LIT {
             return Ok(SymbolType{
                 basic_type: unwrap_lit_tree(&tree),
@@ -414,10 +407,10 @@ impl SemanticAnalyzer {
             });
         }
         
-        Err("error")
+        Err("error".to_string())
     }
 
-    fn analyze_vardef(&mut self, tree: &ParseTree) -> Result<SymbolType, &'static str> {
+    fn analyze_vardef(&mut self, tree: &ParseTree) -> Result<SymbolType, String> {
         //tree.print();
         let sym_type = self.analyze_type(tree.children[1].as_ref().unwrap())?;
 
