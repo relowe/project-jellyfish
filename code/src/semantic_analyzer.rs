@@ -241,7 +241,7 @@ impl SemanticAnalyzer {
         for struct_def_tree in &tree.children {
             let id = unwrap_id_tree(struct_def_tree.as_ref().unwrap().children[0].as_ref().unwrap());
 
-            self.symbol_table.add_type(id);
+            self.symbol_table.add_type(id)?;
         }
 
         // Add all structure objects
@@ -257,7 +257,7 @@ impl SemanticAnalyzer {
                 struct_keys.insert(key_name, key_type);
             }
 
-            self.symbol_table.add_struct_keys(id, struct_keys);
+            self.symbol_table.add_struct_keys(id, struct_keys)?;
         }
         
         Ok(())
@@ -301,24 +301,24 @@ impl SemanticAnalyzer {
 
             println!{"Adding function {} of type {:?}", function_id, fn_obj};
 
-            self.symbol_table.add_function(function_id, fn_obj);
+            self.symbol_table.add_function(function_id, fn_obj)?;
         }
 
         // Loop through each child, and check the function body
         for child in &tree.children {
             let fun_def = child.as_ref().unwrap();
 
-            self.symbol_table.scope_in();
+            self.symbol_table.scope_in()?;
             for param in &fun_def.children[1].as_ref().unwrap().children {
                 let param_name = unwrap_id_tree(param.as_ref().unwrap().children[0].as_ref().unwrap());
                 let param_type = self.analyze_type(param.as_ref().unwrap().children[1].as_ref().unwrap())?;
-                self.symbol_table.add_symbol(param_name, param_type);
+                self.symbol_table.add_symbol(param_name, param_type)?;
             }
 
             self.expected_return_type = Some(unwrap_type_tree(fun_def.children[2].as_ref().unwrap()));
             self.analyze_body(fun_def.children[3].as_ref().unwrap())?;
             self.expected_return_type = None;
-            self.symbol_table.scope_out();
+            self.symbol_table.scope_out()?;
         }
         
         Ok(())
@@ -418,7 +418,7 @@ impl SemanticAnalyzer {
         let id = unwrap_id_tree(tree.children[0].as_ref().unwrap());
 
         println!{"Adding symbol {} of type {:?}", id, sym_type};
-        self.symbol_table.add_symbol(id, sym_type.clone());
+        self.symbol_table.add_symbol(id, sym_type.clone())?;
         
         Ok(sym_type)
     }
