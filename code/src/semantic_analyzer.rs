@@ -308,7 +308,7 @@ impl SemanticAnalyzer {
         for child in &tree.children {
             let fun_def = child.as_ref().unwrap();
 
-            self.symbol_table.scope_in()?;
+            self.symbol_table.scope_in();
             for param in &fun_def.children[1].as_ref().unwrap().children {
                 let param_name = unwrap_id_tree(param.as_ref().unwrap().children[0].as_ref().unwrap());
                 let param_type = self.analyze_type(param.as_ref().unwrap().children[1].as_ref().unwrap())?;
@@ -318,7 +318,7 @@ impl SemanticAnalyzer {
             self.expected_return_type = Some(unwrap_type_tree(fun_def.children[2].as_ref().unwrap()));
             self.analyze_body(fun_def.children[3].as_ref().unwrap())?;
             self.expected_return_type = None;
-            self.symbol_table.scope_out()?;
+            self.symbol_table.scope_out();
         }
         
         Ok(())
