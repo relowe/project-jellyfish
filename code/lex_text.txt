@@ -9,7 +9,7 @@ definitions
         salary: number
     end structure
 
-    VAR_X: text = "Hello, World!"
+    VAR_X, VAR_Y, VAR_Z: text = "Hello, World!"
     y: number = 14.6
     #arr: array [1 to 5] of number = { 1, 2, 3, 4 }
 

@@ -421,7 +421,6 @@ impl SemanticAnalyzer {
         //tree.print();
         let sym_type = self.analyze_type(tree.children[1].as_ref().unwrap())?;
 
-
         let id = unwrap_id_tree(tree.children[0].as_ref().unwrap());
 
         println!{"Adding symbol {} of type {:?}", id, sym_type};
