@@ -40,15 +40,15 @@ pub struct FunctionObject {
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct SymbolTable {
-    symbols: Vec<HashMap<String, SymbolType>>,
-    basic_types: Vec<String>,
-    struct_args: HashMap<String, IndexMap<String, SymbolType>>,
-    functions: HashMap<String, FunctionObject>,
-    depth: usize,
+    pub symbols: Vec<HashMap<String, SymbolType>>,
+    pub basic_types: Vec<String>,
+    pub struct_args: HashMap<String, IndexMap<String, SymbolType>>,
+    pub functions: HashMap<String, FunctionObject>,
+    pub depth: usize,
 }
 
 impl SymbolTable {
-    fn new() -> Self {
+    pub fn new() -> Self {
         let mut st = SymbolTable {
             symbols: Vec::new(),
             basic_types: Vec::new(),
@@ -66,7 +66,7 @@ impl SymbolTable {
         st
     }
 
-    fn add_type(&mut self, basic_type: String) -> Result<(), String> {
+    pub fn add_type(&mut self, basic_type: String) -> Result<(), String> {
         if self.basic_types.contains(&basic_type) {
             return Err("Type mismatch".to_string());
         }
@@ -76,7 +76,7 @@ impl SymbolTable {
         Ok(())
     }
 
-    fn add_symbol(&mut self, symbol: String, symbol_type: SymbolType) -> Result<(), String> {
+    pub fn add_symbol(&mut self, symbol: String, symbol_type: SymbolType) -> Result<(), String> {
         if self.symbols[self.depth].contains_key(&symbol) {
             return Err(format!("Symbol '{}' already exists", &symbol));
         }
@@ -94,7 +94,7 @@ impl SymbolTable {
      * check depth currently at, then keep back tracking to find the symbol
      * symbols: Vec<HashMap<String, SymbolType>>
      */
-    fn find_symbol(&mut self, symbol: String) -> Result<SymbolType, String> {
+    pub fn find_symbol(&mut self, symbol: String) -> Result<SymbolType, String> {
         for i in (0..self.depth+1).rev() {
             if self.symbols[i as usize].contains_key(&symbol) {
                 return Ok(self.symbols[i as usize].get(&symbol).unwrap().clone());
@@ -108,7 +108,7 @@ impl SymbolTable {
      * checks if the function is already defined
      * checks if all the parameters are valid (types that do exist)
      */
-    fn add_function(&mut self, id: String, obj: FunctionObject) -> Result<(), String> {
+    pub fn add_function(&mut self, id: String, obj: FunctionObject) -> Result<(), String> {
         if self.functions.contains_key(&id) {
             return Err(format!("Function {} has already been defined", &id));
         }
@@ -128,7 +128,7 @@ impl SymbolTable {
      * depth + 1
      * add new hashmap to vector
      */
-    fn scope_in(&mut self) {
+    pub fn scope_in(&mut self) {
         self.symbols.push(HashMap::new());
         self.depth += 1;
     }
@@ -137,7 +137,7 @@ impl SymbolTable {
      * depth - 1
      * remove hashmap from vector
      */
-    fn scope_out(&mut self) {
+    pub fn scope_out(&mut self) {
         self.symbols.remove(self.depth);
         self.depth -= 1;
     }
@@ -147,7 +147,7 @@ impl SymbolTable {
      * make sure all struct keys are valid (check symbol table)
      * struct_args: HashMap<String, HashMap<String, SymbolType>>
      */
-    fn add_struct_keys(&mut self, struct_id: String, struct_keys: IndexMap<String, SymbolType>) -> Result<(), String> {
+    pub fn add_struct_keys(&mut self, struct_id: String, struct_keys: IndexMap<String, SymbolType>) -> Result<(), String> {
         if self.struct_args.contains_key(&struct_id) {
             return Err(format!("Structure {} has already been defined", &struct_id));
         }
@@ -166,7 +166,7 @@ impl SymbolTable {
      * find the structure and key, if they don't exist, error
      * struct_args: HashMap<String, HashMap<String, SymbolType>>
      */
-    fn get_struct_key(&self, struct_id: String, key_id: String) -> Result<SymbolType, String> {
+    pub fn get_struct_key(&self, struct_id: String, key_id: String) -> Result<SymbolType, String> {
         // check for structure
         if !self.struct_args.contains_key(&struct_id) {
             return Err(format!("Unknown Structure {}", &struct_id));
@@ -228,15 +228,15 @@ impl SemanticAnalyzer {
     }
 
     // CODE tree
-    pub fn analyze(&mut self, tree: &ParseTree) -> Result<(), String> {
+    pub fn analyze(&mut self, tree: &ParseTree) -> Result<SymbolTable, String> {
         // DEF (could be None)
         if tree.children[0].is_some() {
             self.analyze_definitions(tree.children[0].as_ref().unwrap())?;
         }
-
+        let symtab = self.symbol_table.clone();
         // BODY (program section)
         self.analyze_body(tree.children[1].as_ref().unwrap())?;
-        Ok(())
+        Ok(symtab)
     }
 
     // DEFINITION tree
@@ -780,7 +780,6 @@ impl SemanticAnalyzer {
         Ok(sym_type)
     }
 
-    /// To Do
     /// 
     fn analyze_body(&mut self, tree: &ParseTree) -> Result<(), String> {
         let mut is_other: bool = false;

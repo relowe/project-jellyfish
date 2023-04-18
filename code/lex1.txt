@@ -23,4 +23,8 @@ program
 
     y: array of person = [{ "bob" , 1200 }, {"alice", 100}]
 
+    REPEAT FOREVER
+        continue
+    end repeat
+
 end program
