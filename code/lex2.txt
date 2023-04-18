@@ -1,12 +1,12 @@
 definitions
 
-    function bubble_sort(arr: array of number) returns array of number
+    function bubble_sort(arr: changeable array of number) returns nothing
         tmp: number
-        start: number = lower_bound(arr)
+        start: number = 5 #lower_bound(arr)
 
-        while start < upper_bound(arr)-1
+        while start < 1 #upper_bound(arr)-1
             ptr: number = start
-            while ptr < upper_bound(arr)-1
+            while ptr < 1 #upper_bound(arr)-1
                 if arr[ptr+1] > arr[ptr] then
                     tmp = arr[ptr]
                     arr[ptr] = arr[ptr+1]
@@ -22,7 +22,7 @@ end definitions
 
 program
 
-    ar: array [1 to 5] of number = {5, 3, 2, 4, 1}
-    sorted: array [1 to 5] of number = bubble_sort(ar)
+    ar: array [1 to 5] of number = [5, 3, 2, 4, 1]
+    bubble_sort(ar)
 
 end program

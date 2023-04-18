@@ -1,19 +1,26 @@
 
 definitions
-    function hi() returns nothing
+    structure Person
+        name: text
+        age: number
+    end structure
+
+    a: number
+    b: number
+
+    function hi() returns number
         if a = 1 then
             return a
         else if b = 1 then
             return b
         else 
-            return nothing
+            return a + b
         end if
     end function
 
 end definitions
 program
-    repeat for all x in y
-        print("hi")
-    end repeat
+
+    y: array of person = [{ "bob" , 1200 }, {"alice", 100}]
 
 end program

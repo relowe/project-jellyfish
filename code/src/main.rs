@@ -4,6 +4,7 @@
 mod lexer;
 mod parser;
 mod semantic_analyzer;
+mod library_handler;
 
 use std::env;
 

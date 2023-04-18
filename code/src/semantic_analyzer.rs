@@ -5,32 +5,44 @@ use std::{env, process};
 use std::collections::HashMap;
 use crate::lexer::{TokenType};
 use crate::parser::{ParseTree, Parser, ParseType};
+use crate::library_handler;
+use indexmap::{IndexMap};
+
+static PRIMATIVES: &[&str] = &["number", "text", "nothing"];
 
 #[derive(Clone, Eq, Debug)]
 pub struct SymbolType {
-    basic_type: String,
-    is_pointer: bool,
-    array_dimensions: i32,
+    pub basic_type: String,
+    pub is_pointer: bool,
+    pub array_dimensions: i32,
 }
 
 impl PartialEq for SymbolType {
     fn eq(&self, other: &Self) -> bool {
-        self.basic_type == other.basic_type &&
-        self.array_dimensions == other.array_dimensions
+        let mut basic = true;
+        let mut arr = true;
+        if self.basic_type != "*".to_string() && other.basic_type != "*".to_string() {
+            basic = self.basic_type == other.basic_type;
+        }
+        if self.array_dimensions >= 0 && other.array_dimensions >= 0 {
+            arr = self.array_dimensions == other.array_dimensions;
+        }
+        
+        basic && arr
     }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct FunctionObject {
-    params: Vec<SymbolType>,
-    return_type: String,
+    pub params: Vec<SymbolType>,
+    pub return_type: String,
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct SymbolTable {
     symbols: Vec<HashMap<String, SymbolType>>,
     basic_types: Vec<String>,
-    struct_args: HashMap<String, HashMap<String, SymbolType>>,
+    struct_args: HashMap<String, IndexMap<String, SymbolType>>,
     functions: HashMap<String, FunctionObject>,
     depth: usize,
 }
@@ -41,15 +53,15 @@ impl SymbolTable {
             symbols: Vec::new(),
             basic_types: Vec::new(),
             struct_args: HashMap::new(),
-            functions: HashMap::new(),
+            functions: library_handler::get_external_functions(),
             depth: 0,
         };
 
         st.symbols.push(HashMap::new());
 
-        st.basic_types.push("number".to_string());
-        st.basic_types.push("text".to_string());
-        st.basic_types.push("nothing".to_string());
+        for primative in PRIMATIVES {
+            st.basic_types.push(primative.to_string());
+        }
 
         st
     }
@@ -135,7 +147,7 @@ impl SymbolTable {
      * make sure all struct keys are valid (check symbol table)
      * struct_args: HashMap<String, HashMap<String, SymbolType>>
      */
-    fn add_struct_keys(&mut self, struct_id: String, struct_keys: HashMap<String, SymbolType>) -> Result<(), String> {
+    fn add_struct_keys(&mut self, struct_id: String, struct_keys: IndexMap<String, SymbolType>) -> Result<(), String> {
         if self.struct_args.contains_key(&struct_id) {
             return Err(format!("Structure {} has already been defined", &struct_id));
         }
@@ -210,6 +222,11 @@ impl SemanticAnalyzer {
         }
     }
 
+    // Get information about the current tree for errors
+    fn err_header(&mut self, tree: &ParseTree) -> String {
+        format!{"Error on line {}:{} - ", tree.token.row, tree.token.col}
+    }
+
     // CODE tree
     pub fn analyze(&mut self, tree: &ParseTree) -> Result<(), String> {
         // DEF (could be None)
@@ -256,7 +273,7 @@ impl SemanticAnalyzer {
         for struct_def_tree in &tree.children {
             let id = unwrap_id_tree(struct_def_tree.as_ref().unwrap().children[0].as_ref().unwrap());
 
-            let mut struct_keys: HashMap<String, SymbolType> = HashMap::new();
+            let mut struct_keys: IndexMap<String, SymbolType> = IndexMap::new();
 
             for struct_arg in &struct_def_tree.as_ref().unwrap().children[1].as_ref().unwrap().children {
                 let key_name = unwrap_id_tree(struct_arg.as_ref().unwrap().children[0].as_ref().unwrap());
@@ -356,7 +373,12 @@ impl SemanticAnalyzer {
         //println!("Comparing types \n\t{:?}\n\t{:?}", left_type, right_type);
 
         if left_type != right_type {
-            return Err(format!{"Type mismatch between {:?} and {:?}", left_type, right_type});
+            return Err(format!{"{} Type mismatch between {:?} and {:?}", self.err_header(tree), left_type, right_type});
+        }
+
+        // Set the left_type if it was an unsized array
+        if left_type.array_dimensions == -1 {
+
         }
 
         Ok(())
@@ -375,23 +397,32 @@ impl SemanticAnalyzer {
         }
 
         if curr_tree.parse_type == ParseType::ARRAYDEF {
-            curr_tree.print();
-            let bounds_tree = curr_tree.children[0].as_ref().unwrap();
+            //curr_tree.print();
 
-            for bound in &bounds_tree.children {
-                array_dimensions += 1;
-                let mut bound_type: SymbolType;
-                if bound.as_ref().unwrap().children[0].as_ref().is_some() {
-                    bound_type = self.analyze_resolvable(bound.as_ref().unwrap().children[0].as_ref().unwrap())?;
+            // If there are defined bounds, make sure they are integers
+            // This will also set the array_dimensions
+            // Otherwise, we don't know the current dimensions until later
+            if curr_tree.children[0].as_ref().is_some() {
+                let bounds_tree = curr_tree.children[0].as_ref().unwrap();
+
+                for bound in &bounds_tree.children {
+                    array_dimensions += 1;
+                    let mut bound_type: SymbolType;
+                    if bound.as_ref().unwrap().children[0].as_ref().is_some() {
+                        bound_type = self.analyze_resolvable(bound.as_ref().unwrap().children[0].as_ref().unwrap())?;
+                        if bound_type.basic_type != "number".to_string() {
+                            return Err(format!{"{} Cannot set bounds of an array to a non-number!", self.err_header(curr_tree)});
+                        }
+                    }
+
+                    bound_type = self.analyze_resolvable(bound.as_ref().unwrap().children[1].as_ref().unwrap())?;
                     if bound_type.basic_type != "number".to_string() {
-                        return Err("Cannot set bounds of an array to a non-number!".to_string());
+                        return Err(format!{"{} Cannot set bounds of an array to a non-number!", self.err_header(curr_tree)});
                     }
                 }
-
-                bound_type = self.analyze_resolvable(bound.as_ref().unwrap().children[1].as_ref().unwrap())?;
-                if bound_type.basic_type != "number".to_string() {
-                    return Err("Cannot set bounds of an array to a non-number!".to_string());
-                }
+            }
+            else {
+                array_dimensions = -1;
             }
 
             curr_tree = curr_tree.children[1].as_ref().unwrap();
@@ -406,6 +437,7 @@ impl SemanticAnalyzer {
     }
 
     fn analyze_resolvable(&mut self, tree: &ParseTree) -> Result<SymbolType, String> {
+        // Catch just pure literal values
         if tree.parse_type == ParseType::LIT {
             return Ok(SymbolType{
                 basic_type: unwrap_lit_tree(&tree),
@@ -414,6 +446,7 @@ impl SemanticAnalyzer {
             });
         }
 
+        // Catch binary operations
         else if tree.parse_type == ParseType::BINOP {
             // Get the types of the left and right children
             let left_type = self.analyze_resolvable(tree.children[0].as_ref().unwrap())?;
@@ -423,8 +456,8 @@ impl SemanticAnalyzer {
             if tree.token.token_type == TokenType::ADD &&
                left_type.basic_type == "text".to_string() &&
                right_type.basic_type == "text".to_string() &&
-               left_type.array_dimensions == 0 &&
-               right_type.array_dimensions == 0 {
+               left_type.array_dimensions <= 0 &&
+               right_type.array_dimensions <= 0 {
                 return Ok(SymbolType{
                     basic_type: "text".to_string(),
                     is_pointer: false,
@@ -434,10 +467,10 @@ impl SemanticAnalyzer {
 
             // Otherwise, they both must be numbers (non-arrays)
             if left_type.basic_type != "number".to_string() ||
-               left_type.array_dimensions != 0 ||
+               left_type.array_dimensions > 0 ||
                right_type.basic_type != "number".to_string() ||
-               right_type.array_dimensions != 0 {
-                return Err("Cannot perform binary operations on non-numbers".to_string());
+               right_type.array_dimensions > 0 {
+                return Err(format!{"{} Cannot perform binary operations on non-numbers", self.err_header(tree)});
             }
 
             // Return Ok
@@ -448,70 +481,195 @@ impl SemanticAnalyzer {
             });
         }
 
-        // copy above for neg, abs, bitnot (with only one child)
-
-
-        // Blake, is it not simpler to just check if they are literals?
-        // Then they could't be arrays, right? If I'm wrong, just change it
+        // Catch negative
         else if tree.parse_type == ParseType::NEG {
-            if tree.children[0].as_ref().unwrap().parse_type != ParseType::LIT ||
-                    unwrap_lit_tree(tree.children[0].as_ref().unwrap()) != "number" {
-                return Err("Negative must be provided a number literal.".to_string());
+            let child_type = self.analyze_resolvable(tree.children[0].as_ref().unwrap())?;
+
+            // These must both be numbers
+            if child_type.basic_type != "number".to_string() ||
+               child_type.array_dimensions > 0 {
+                return Err(format!{"{} Cannot perform negative operation on non-number", self.err_header(tree)});
             }
-            return Ok(SymbolType {
-                basic_type: unwrap_lit_tree(tree.children[0].as_ref().unwrap()),
+
+            // Return Ok
+            return Ok(SymbolType{
+                basic_type: "number".to_string(),
                 is_pointer: false,
                 array_dimensions: 0,
             });
         }
 
+        // Catch absolute value
         else if tree.parse_type == ParseType::ABS {
-            if tree.children[0].as_ref().unwrap().parse_type != ParseType::LIT ||
-                    unwrap_lit_tree(tree.children[0].as_ref().unwrap()) != "number" {
-                return Err("Absolute must be provided a number literal.".to_string());
+            let child_type = self.analyze_resolvable(tree.children[0].as_ref().unwrap())?;
+
+            // These must both be numbers
+            if child_type.basic_type != "number".to_string() ||
+               child_type.array_dimensions > 0 {
+                return Err(format!{"{} Cannot perform absolute value operation on non-number", self.err_header(tree)});
             }
-            return Ok(SymbolType {
-                basic_type: unwrap_lit_tree(tree.children[0].as_ref().unwrap()),
+
+            // Return Ok
+            return Ok(SymbolType{
+                basic_type: "number".to_string(),
                 is_pointer: false,
                 array_dimensions: 0,
             });
         }
 
-        // Blake: Is this only supposed to work on numbers? That's how I coded it.
+        // Catch bitwise not
         else if tree.parse_type == ParseType::BITNOT {
-            if tree.children[0].as_ref().unwrap().parse_type != ParseType::LIT ||
-                    unwrap_lit_tree(tree.children[0].as_ref().unwrap()) != "number" {
-                return Err("Absolute must be provided a number literal.".to_string());
+            let child_type = self.analyze_resolvable(tree.children[0].as_ref().unwrap())?;
+
+            // These must both be numbers
+            if child_type.basic_type != "number".to_string() ||
+               child_type.array_dimensions != 0 {
+                return Err(format!{"{} Cannot perform bitwise not operation on non-number", self.err_header(tree)});
             }
-            return Ok(SymbolType {
-                basic_type: unwrap_lit_tree(tree.children[0].as_ref().unwrap()),
+
+            // Return Ok
+            return Ok(SymbolType{
+                basic_type: "number".to_string(),
                 is_pointer: false,
                 array_dimensions: 0,
             });
         }
 
+        // Catch references
         else if tree.parse_type == ParseType::GETINDEX ||
                 tree.parse_type == ParseType::GETSTRUCT ||
                 tree.parse_type == ParseType::ID {
             return self.analyze_reference(tree);
         }
         
-        // Blake: To Do
+        // Catch function calls
         else if tree.parse_type == ParseType::CALL {
+            let fun_name = unwrap_id_tree(tree.children[0].as_ref().unwrap());
+
+            println!("Checking function {}", fun_name);
+
+
+            if self.symbol_table.functions.contains_key(&fun_name) {
+                let fun_obj = self.symbol_table.functions.get(&fun_name).expect("Could not load function map").clone();
+                
+                let ret = SymbolType {
+                    basic_type: fun_obj.return_type.clone(),
+                    is_pointer: false,
+                    array_dimensions: 0,
+                };
+
+                let ex_res_type = self.expected_resolve_type.clone();
+
+                for (fun_arg, child) in fun_obj.params.into_iter().zip(tree.children[1].as_ref().unwrap().children.iter()) {
+                    self.expected_resolve_type = Some(fun_arg.clone());
+                    let res_type = self.analyze_resolvable(child.as_ref().unwrap())?;
+    
+                    if res_type != fun_arg.clone() {
+                        return Err(format!{"{} Function argument {:?} does not match expected parameter type {:?}", self.err_header(child.as_ref().unwrap()), fun_arg.clone(), res_type});
+                    }
+                }
+
+                self.expected_resolve_type = ex_res_type;
+
+                return Ok(ret)
+
+            }
+
             return Ok(SymbolType {
-                basic_type: "call".to_string(),
+                basic_type: "external_function_call".to_string(),
                 array_dimensions: 0, 
                 is_pointer: false
             });
         }
         
         // Blake: To Do
-        else if tree.parse_type == ParseType::ARRAYORSTRUCTLIT {
-            return Ok(SymbolType {
-                basic_type: "array/struct".to_string(),
-                array_dimensions: 1, 
-                is_pointer: false
-            });
+        // Catch arrays or structures (recursively unwrap them)
+        else if tree.parse_type == ParseType::ARRAYLIT {
+            println!{"Expected resolve type: {:?}", self.expected_resolve_type};
+
+            // Catch unexpected arrays
+            if self.expected_resolve_type.is_none() {
+                return Err(format!{"{} Unexpected array literal", self.err_header(tree)});
+            }
+
+            // Mark the current expected resolve type (this should be Some)
+            let mut ex_res_type = self.expected_resolve_type.clone().unwrap();
+
+            // Catch all arrays first
+            // Compare size if we actually know it
+            if ex_res_type.array_dimensions > 0 {
+
+                // Take out a layer of array, then check all children
+                let new_ex_res_type = SymbolType {
+                    basic_type: ex_res_type.basic_type.clone(),
+                    is_pointer: ex_res_type.is_pointer,
+                    array_dimensions: ex_res_type.array_dimensions - 1,
+                };
+
+                // Check each child
+                self.expected_resolve_type = Some(new_ex_res_type.clone());
+                for child in &tree.children {
+                    println!("Checking array children for type {:?}", self.expected_resolve_type);
+                    let element_type = self.analyze_resolvable(child.as_ref().unwrap())?;
+                    if element_type != new_ex_res_type {
+                        return Err(format!{"{} Type mis-match inside of array literal", self.err_header(child.as_ref().unwrap())});
+                    }
+                }
+
+                println!("Processed array of type {:?}", ex_res_type);
+
+                self.expected_resolve_type = Some(ex_res_type.clone());
+
+                return Ok(ex_res_type);
+            }
+            // Otherwise, attempt to predict size from the literal
+            else {
+                let mut arr_depth = 0;
+                let mut t = tree;
+                while t.parse_type == ParseType::ARRAYLIT {
+                    t = t.children[0].as_ref().unwrap();
+                    arr_depth += 1;
+                }
+
+                ex_res_type.array_dimensions = arr_depth;
+                self.expected_resolve_type = Some(ex_res_type);
+                // With a predicted size, now try to resolve
+                return self.analyze_resolvable(tree);
+            }
+        }
+
+        // Catch structures (and match children types)
+        else if tree.parse_type == ParseType::STRUCTLIT {
+            println!{"Expected resolve type: {:?}", self.expected_resolve_type};
+
+            // Catch unexpected structures
+            if self.expected_resolve_type.is_none() {
+                return Err(format!{"{} Unexpected structure literal", self.err_header(tree)});
+            }
+
+            // Mark the current expected resolve type (this should be Some)
+            let mut ex_res_type = self.expected_resolve_type.clone().unwrap();
+
+            // Get the structure expected arguments
+            let struct_args = self.symbol_table.struct_args.get(&ex_res_type.basic_type).expect("Could not load structure arguments").clone();
+
+            println!("Structure args: {:?}", struct_args);
+
+            if struct_args.keys().len() != tree.children.len() {
+                return Err(format!{"{} Number of items does not match number of structure elements", self.err_header(tree)});
+            }
+
+            for (struct_arg, child) in struct_args.values().zip(tree.children.iter()) {
+                self.expected_resolve_type = Some(struct_arg.clone());
+                let res_type = self.analyze_resolvable(child.as_ref().unwrap())?;
+
+                if res_type != struct_arg.clone() {
+                    return Err(format!{"{} Structure item {:?} does not match expected type {:?}", self.err_header(child.as_ref().unwrap()), struct_arg.clone(), res_type});
+                }
+            }
+
+            self.expected_resolve_type = Some(ex_res_type.clone());
+            return Ok(ex_res_type);
         }
         
         //Err("error".to_string())
@@ -523,7 +681,6 @@ impl SemanticAnalyzer {
         })
     }
 
-    /// Blake: check/reimplement please
     fn analyze_conditional(&mut self, tree: &ParseTree) -> Result<(), String> {
         match tree.parse_type {
             ParseType::BINCOMP => {
@@ -535,29 +692,30 @@ impl SemanticAnalyzer {
                 if tree.token.token_type == TokenType::EQ &&
                     left_type.basic_type == "text".to_string() &&
                     right_type.basic_type == "text".to_string() &&
-                    left_type.array_dimensions == 0 &&
-                    right_type.array_dimensions == 0 {
+                    left_type.array_dimensions <= 0 &&
+                    right_type.array_dimensions <= 0 {
                     return Ok(());
                 }
 
-                println!("Comparing types {:?} and {:?}.", left_type, right_type);
+                //println!("Comparing types {:?} and {:?}.", left_type, right_type);
 
                 // Otherwise, they both must be numbers (non-arrays)
                 if left_type.basic_type != "number".to_string() ||
-                    left_type.array_dimensions != 0 ||
+                    left_type.array_dimensions > 0 ||
                     right_type.basic_type != "number".to_string() ||
-                    right_type.array_dimensions != 0 {
-                    return Err("Cannot perform binary comparisons on non-numbers".to_string());
-                }
+                    right_type.array_dimensions > 0 {
+                        println!{"{:?} <<<>>> {:?}", left_type, right_type};
+                        return Err(format!{"{} Cannot perform binary comparison on non-numbers", self.err_header(tree)});
+                    }
                 return Ok(());
             },
             ParseType::ISLINKED | ParseType::ISNOTLINKED => {
                 if !self.analyze_reference(tree.children[0].as_ref().unwrap())?.is_pointer {
-                    return Err("Cannot check the link status of a non-link object".to_string());
+                    return Err(format!{"{} Cannot check status of a non-linable object", self.err_header(tree)});
                 }
                 return Ok(());
             },
-            _ => return Err("Must have a conditional statement".to_string()),
+            _ => return Err(format!{"{} Must have a conditional", self.err_header(tree)}),
         }
     }
 
@@ -573,10 +731,13 @@ impl SemanticAnalyzer {
                 // check all indecies to make sure they are numbers
                 let index_tree = tree.children[1].as_ref().unwrap();
                 for idx in &index_tree.children {
-                    arr_dims -= 1;
+                    // We can't do much about unknown array dimensions yet
+                    if arr_dims != -1 {
+                        arr_dims -= 1;
+                    }
                     let idx_type = self.analyze_resolvable(idx.as_ref().unwrap())?;
                     if idx_type.basic_type != "number".to_string() {
-                        return Err("Cannot index using a non-number".to_string());
+                        return Err(format!{"{} Cannot index using a non-number", self.err_header(tree)});
                     }
                 }
 
@@ -623,39 +784,30 @@ impl SemanticAnalyzer {
     /// To Do
     /// 
     fn analyze_body(&mut self, tree: &ParseTree) -> Result<(), String> {
-        let mut ret: bool;
-        let mut res: bool;
+        let mut is_other: bool = false;
         for child in &tree.children {
-            if self.expected_return_type.is_some() &&
-                    child.as_ref().unwrap().parse_type == ParseType::RETURN {
-                self.analyze_return(child.as_ref().unwrap())?;
-                continue;
-            }
-
-            ret = false;
-            res = false;
             match child.as_ref().unwrap().parse_type {
                 ParseType::IF => self.analyze_if(child.as_ref().unwrap())?,
-                // ParseType::LINK => self.analyze_link(child.as_ref().unwrap())?,
+                ParseType::LINK => (),
                 ParseType::UNLINK => self.analyze_unlink(child.as_ref().unwrap())?,
                 ParseType::WHILE => self.analyze_while(child.as_ref().unwrap())?,
                 ParseType::REPEAT => self.analyze_repeat(child.as_ref().unwrap())?,
                 ParseType::REPEATFOR => self.analyze_repeat_for(child.as_ref().unwrap())?,
                 ParseType::REPEATFOREVER => self.analyze_repeat_forever(child.as_ref().unwrap())?,
-                // ParseType::QUIT => self.analyze_quit(child.as_ref().unwrap())?,
-                // ParseType::BREAK => self.analyze_break(child.as_ref().unwrap())?,
-                // ParseType::CONTINUE => self.analyze_continue(child.as_ref().unwrap())?,
                 ParseType::QUIT | ParseType::BREAK | ParseType::CONTINUE => (),
-                // ParseType::CALL => self.analyze_call(child.as_ref().unwrap())?,
                 ParseType::ASSIGN => self.analyze_assignment(child.as_ref().unwrap())?,
-                ParseType::RETURN => ret = true,
-                _ => res = true,
+                ParseType::RETURN => self.analyze_return(child.as_ref().unwrap())?,
+                _ => is_other = true,
             }
-            if res {
-                self.analyze_resolvable(child.as_ref().unwrap())?;
-            }
-            if ret {
-                return Err("Cannot return a value from the main program.".to_string());
+            // Catch anything with an actual return type
+            if is_other {
+                if child.as_ref().unwrap().parse_type == ParseType::VARDEF {
+                    self.analyze_vardef(child.as_ref().unwrap());
+                }
+                else {
+                    self.analyze_resolvable(child.as_ref().unwrap())?;
+                }
+                is_other = false
             }
         }
 
@@ -666,20 +818,14 @@ impl SemanticAnalyzer {
     /// Children: BINCOMP, BLOCK, (IF || BLOCK)
     fn analyze_if(&mut self, tree: &ParseTree) -> Result<(), String> {
         // Analyze the comparison
-        if tree.children[0].as_ref().unwrap().parse_type != ParseType::BINCOMP {
-            return Err("If statements must have a condition.".to_string());
-        }
         self.analyze_conditional(tree.children[0].as_ref().unwrap())?;
 
-        // Analyze the if block
-        if tree.children[1].as_ref().unwrap().parse_type != ParseType::BLOCK {
-            return Err("If statements must have a block to execute.".to_string());
-        }
+        // Analyze the body
         self.symbol_table.scope_in();
         self.analyze_body(tree.children[1].as_ref().unwrap())?;
         self.symbol_table.scope_out();
 
-        if tree.children.len() == 3 {
+        if tree.children[2].is_some() {
             // Analyze an else if
             if tree.children[2].as_ref().unwrap().parse_type == ParseType::IF {
                 self.analyze_if(tree.children[2].as_ref().unwrap())?;
@@ -704,15 +850,9 @@ impl SemanticAnalyzer {
     /// 
     fn analyze_while(&mut self, tree: &ParseTree) -> Result<(), String> {
         // Analyze the comparison
-        if tree.children[0].as_ref().unwrap().parse_type != ParseType::BINCOMP {
-            return Err("While statements must have a condition.".to_string());
-        }
         self.analyze_conditional(tree.children[0].as_ref().unwrap())?;
 
         // Analyze the while block
-        if tree.children[1].as_ref().unwrap().parse_type != ParseType::BLOCK {
-            return Err("While statements must have a block to execute.".to_string());
-        }
         self.symbol_table.scope_in();
         self.analyze_body(tree.children[1].as_ref().unwrap())?;
         self.symbol_table.scope_out();
@@ -722,10 +862,10 @@ impl SemanticAnalyzer {
 
     /// 
     fn analyze_repeat(&mut self, tree: &ParseTree) -> Result<(), String> {
-        // Check if a number literal was passed to repeat that amount of times
-        if tree.children[0].as_ref().unwrap().parse_type != ParseType::LIT ||
-                unwrap_lit_tree(tree.children[0].as_ref().unwrap()) != "number" {
-            return Err("repeat must be provided a number literal.".to_string());
+        // Check if a number was passed to repeat that amount of times
+        let repeat_type = self.analyze_resolvable(tree.children[0].as_ref().unwrap())?;
+        if repeat_type.basic_type != "number".to_string() || repeat_type.array_dimensions <= 0 {
+            return Err(format!{"{} Repeat must be provided a number literal", self.err_header(tree.children[0].as_ref().unwrap())});
         }
 
         // Analyze the body
@@ -739,9 +879,9 @@ impl SemanticAnalyzer {
     /// 
     fn analyze_repeat_for(&mut self, tree: &ParseTree) -> Result<(), String> {
         // Make sure the second item is an array
-        let arr_type: SymbolType = self.analyze_reference(tree.children[1].as_ref().unwrap())?;
-        if arr_type.array_dimensions < 1 {
-            return Err("You must provide an array to iterate over.".to_string());
+        let repeat_type = self.analyze_resolvable(tree.children[1].as_ref().unwrap())?;
+        if repeat_type.array_dimensions == 0 {
+            return Err(format!{"{} Repeat must have an array to loop over", self.err_header(tree.children[1].as_ref().unwrap())});
         }
 
         // Analyze body:
@@ -749,8 +889,11 @@ impl SemanticAnalyzer {
         self.symbol_table.scope_in();
 
         //   - Add name and type
-        let mut symbol_type = arr_type.clone();
-        symbol_type.array_dimensions -= 1;
+        let mut symbol_type = repeat_type.clone();
+        // We can't subtract from an unknown-size array
+        if symbol_type.array_dimensions > 0 {
+            symbol_type.array_dimensions -= 1;
+        }
         let symbol = unwrap_id_tree(tree.children[0].as_ref().unwrap());
         self.symbol_table.add_symbol(symbol, symbol_type);
 
@@ -774,23 +917,34 @@ impl SemanticAnalyzer {
     }
 
     /// 
-    fn analyze_return(&mut self, tree: &ParseTree) -> Result<SymbolType, String> {
-        // Check to see if the return type is nothing
-        if unwrap_type_tree(tree.children[0].as_ref().unwrap()) == "nothing" {
-            return Ok(SymbolType {
-                basic_type: "nothing".to_string(),
-                is_pointer: false,
-                array_dimensions: 0,
-            });
+    fn analyze_return(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Make sure we are expecting a return
+        if self.expected_return_type.is_none() {
+            return Err("Unexpected return statement".to_string());
         }
-        // Otherwise return the resolvable type
-        Ok(self.analyze_resolvable(tree.children[0].as_ref().unwrap())?)
+
+        let expected_type = self.expected_return_type.clone().unwrap();
+        let mut ret_type: String = "nothing".to_string();
+
+        // Check to see if the return type is nothing
+        if tree.children[0].is_some() {
+            let sym_type = self.analyze_resolvable(tree.children[0].as_ref().unwrap())?;
+            ret_type = sym_type.basic_type;
+        }
+
+        // Make sure the expected type matches the return type
+        if expected_type != ret_type {
+            return Err(format!{"Mismatched return types. Expected {:?}, got {:?}", expected_type, ret_type}.to_string());
+        }
+
+        // Otherwise return Ok
+        Ok(())
     }
 
     /// 
     fn analyze_unlink(&mut self, tree: &ParseTree) -> Result<(), String> {
         if !self.analyze_reference(tree.children[0].as_ref().unwrap())?.is_pointer {
-            return Err(format!("{:?} is not linked", unwrap_id_tree(tree.children[0].as_ref().unwrap())));
+            return Err(format!("{} {:?} is not a linkable object", self.err_header(tree.children[0].as_ref().unwrap()), unwrap_id_tree(tree.children[0].as_ref().unwrap())));
         }
         Ok(())
     }

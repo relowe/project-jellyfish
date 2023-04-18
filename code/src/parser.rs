@@ -53,7 +53,8 @@ pub enum ParseType {
     POINTER,    // type for pointers specifically
     CHANGEABLE, // changeable modifier for types
     LINK,       // link modifier for types
-    ARRAYORSTRUCTLIT, // array or structure literal
+    ARRAYLIT,   // array literal
+    STRUCTLIT,  // structure literal
     ARRAYDEF,   // define an array variable with (optional) bounds and type
     BOUNDS,     // bounds for an array
     BOUND,      // a single bound for an array
@@ -1358,14 +1359,21 @@ impl Parser {
             return self.ref_or_call(id_tree);
         }
         else if self.has(&lexer::TokenType::LCURLY) {
-            return self.array_struct_lit();
+            return self.struct_lit();
+        }
+        else if self.has(&lexer::TokenType::LBRACKET) {
+            return self.array_lit();
         }
         else {
-            println!{"==============================="};
-            println!("{:?}\nI don't know how we got here", self.curr_token());
-            println!{"==============================="};
-            self.next()?;
-            return Ok(None);
+            //println!{"==============================="};
+            //println!("{:?}\nI don't know how we got here", self.curr_token());
+            //println!{"==============================="};
+            self.must_be(&NUMBER_TYPE);
+            return Ok(Some(ParseTree{
+                parse_type: ParseType::INVALID,
+                token: self.curr_token(),
+                children: Vec::new(),
+            }));
         }
     }
 
@@ -1389,9 +1397,34 @@ impl Parser {
         self.reference2(id_tree)
     }
 
-    fn array_struct_lit(&mut self) -> Result<Option<ParseTree>, &'static str> {
+    fn array_lit(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut parse_tree = ParseTree{
-            parse_type: ParseType::ARRAYORSTRUCTLIT,
+            parse_type: ParseType::ARRAYLIT,
+            token: self.curr_token(), // replace w null
+            children: Vec::new()
+        };
+
+        self.eat(&lexer::TokenType::LBRACKET)?;
+
+        while !self.has(&lexer::TokenType::RBRACKET) {
+            parse_tree.children.push(self.resolvable()?);
+
+            if self.has(&lexer::TokenType::COMMA) {
+                self.next()?;
+            }
+            else {
+                break;
+            }
+        }
+
+        self.eat(&lexer::TokenType::RBRACKET)?;
+
+        Ok(Some(parse_tree))
+    }
+
+    fn struct_lit(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        let mut parse_tree = ParseTree{
+            parse_type: ParseType::STRUCTLIT,
             token: self.curr_token(), // replace w null
             children: Vec::new()
         };
@@ -1468,6 +1501,8 @@ impl Parser {
             self.next()?;
 
             // < type or bounds >
+            
+            // add this line to expect bounds
             if self.has(&lexer::TokenType::LBRACKET) {
                 parse_tree.children.push(self.bounds()?);
             }
