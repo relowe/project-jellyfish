@@ -1,7 +1,7 @@
 #![allow(dead_code)]
-#![allow(warnings)]
+// #![allow(warnings)]
 
-use std::{env, process};
+use std::{env};
 use std::collections::HashMap;
 use crate::lexer::{TokenType};
 use crate::parser::{ParseTree, Parser, ParseType};
@@ -152,7 +152,7 @@ impl SymbolTable {
             return Err(format!("Structure {} has already been defined", &struct_id));
         }
 
-        for (key, value) in &struct_keys {
+        for (_key, value) in &struct_keys {
             if !self.basic_types.contains(&value.basic_type) {
                 return Err(format!("Unknown type: {}", &value.basic_type));
             }
@@ -201,8 +201,8 @@ pub fn unwrap_type_tree(tree: &ParseTree) -> String {
 
 pub fn unwrap_lit_tree(tree: &ParseTree) -> String {
     match &tree.token.token_type {
-        TokenType::NUMBER(x) => "number".to_string(),
-        TokenType::TEXT(x) => "text".to_string(),
+        TokenType::NUMBER(_x) => "number".to_string(),
+        TokenType::TEXT(_x) => "text".to_string(),
         _ => "invalid".to_string(),
     }
 }
@@ -582,7 +582,6 @@ impl SemanticAnalyzer {
             });
         }
         
-        // Blake: To Do
         // Catch arrays or structures (recursively unwrap them)
         else if tree.parse_type == ParseType::ARRAYLIT {
             println!{"Expected resolve type: {:?}", self.expected_resolve_type};
@@ -648,7 +647,7 @@ impl SemanticAnalyzer {
             }
 
             // Mark the current expected resolve type (this should be Some)
-            let mut ex_res_type = self.expected_resolve_type.clone().unwrap();
+            let ex_res_type = self.expected_resolve_type.clone().unwrap();
 
             // Get the structure expected arguments
             let struct_args = self.symbol_table.struct_args.get(&ex_res_type.basic_type).expect("Could not load structure arguments").clone();
@@ -720,7 +719,7 @@ impl SemanticAnalyzer {
     }
 
     fn analyze_reference(&mut self, tree: &ParseTree) -> Result<SymbolType, String> {
-        let mut ref_type: SymbolType;
+        let ref_type: SymbolType;
 
         if tree.parse_type != ParseType::ID {
             ref_type = self.analyze_reference(tree.children[0].as_ref().unwrap())?;
@@ -802,7 +801,7 @@ impl SemanticAnalyzer {
             // Catch anything with an actual return type
             if is_other {
                 if child.as_ref().unwrap().parse_type == ParseType::VARDEF {
-                    self.analyze_vardef(child.as_ref().unwrap());
+                    self.analyze_vardef(child.as_ref().unwrap())?;
                 }
                 else {
                     self.analyze_resolvable(child.as_ref().unwrap())?;
@@ -895,7 +894,7 @@ impl SemanticAnalyzer {
             symbol_type.array_dimensions -= 1;
         }
         let symbol = unwrap_id_tree(tree.children[0].as_ref().unwrap());
-        self.symbol_table.add_symbol(symbol, symbol_type);
+        self.symbol_table.add_symbol(symbol, symbol_type)?;
 
         //   - Check Body
         self.analyze_body(tree.children[2].as_ref().unwrap())?;
@@ -954,7 +953,7 @@ impl SemanticAnalyzer {
 fn symbol_table_test() {
     let mut st = SymbolTable::new();
 
-    st.add_type("PERSON".to_string());
+    st.add_type("PERSON".to_string()).unwrap();
 
     let sym_type = SymbolType {
         basic_type: "PERSON".to_string(),
@@ -962,7 +961,7 @@ fn symbol_table_test() {
         array_dimensions: 0,
     };
 
-    st.add_symbol("x".to_string(), sym_type);
+    st.add_symbol("x".to_string(), sym_type).unwrap();
 
     println! {"{:?}", st};
 }

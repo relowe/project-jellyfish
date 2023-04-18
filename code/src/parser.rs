@@ -304,7 +304,7 @@ impl Parser {
     fn id(&mut self) -> Result<Option<ParseTree>, &'static str> {
         self.must_be(&ID_TYPE);
 
-        let mut parse_tree = ParseTree{
+        let parse_tree = ParseTree{
             parse_type: ParseType::ID,
             token: self.curr_token(),
             children: Vec::new()
@@ -457,7 +457,7 @@ impl Parser {
             return self.fun_arg_type();
         }
         
-        let mut parse_tree = ParseTree{
+        let parse_tree = ParseTree{
             parse_type: ParseType::TYPE,
             token: self.curr_token(),
             children: Vec::new()
@@ -500,7 +500,7 @@ impl Parser {
 
         self.eat(&lexer::TokenType::COLON)?;
 
-        let mut type_tree: Option<ParseTree>;
+        let type_tree: Option<ParseTree>;
 
 
         // Changable
@@ -878,11 +878,7 @@ impl Parser {
     fn repeat(&mut self) -> Result<Option<ParseTree>, &'static str> {
         self.eat(&lexer::TokenType::REPEAT)?;
 
-        let mut parse_tree = ParseTree {
-            parse_type: ParseType::INVALID,
-            token: self.curr_token(), // replace w null
-            children: Vec::new(),
-        };
+        let mut parse_tree;
         
         // repeat forever
         if self.has(&lexer::TokenType::FOREVER) {
@@ -953,7 +949,7 @@ impl Parser {
     fn quit(&mut self) -> Result<Option<ParseTree>, &'static str> {
         self.eat(&lexer::TokenType::QUIT)?;
 
-        let mut parse_tree = ParseTree{
+        let parse_tree = ParseTree{
             parse_type: ParseType::QUIT,
             token: self.curr_token(), // replace w null
             children: Vec::new()
@@ -1593,7 +1589,7 @@ impl Parser {
     }
 
     fn foo(&mut self) -> Result<Option<ParseTree>, &'static str> {
-        let mut parse_tree = ParseTree{
+        let parse_tree = ParseTree{
             parse_type: ParseType::QUIT,
             token: self.curr_token(), // replace w null
             children: Vec::new()
