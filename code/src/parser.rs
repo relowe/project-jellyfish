@@ -1453,6 +1453,14 @@ impl Parser {
             };
             self.next()?;
 
+
+            // FOR NOW, WE ARE GOING TO EXPECT BOUNDS
+            // IF NOT PROVIDING BOUNDS, ONE WOULD NEED
+            // TO DYNAMICALLY FIND AND SET THE PROPER
+            // SIZE IN MEMORY
+            // TO UNDO THIS, REMOVE THE FOLLOWING LINE
+            self.must_be(&lexer::TokenType::LBRACKET);
+
             // < type or bounds >
             if self.has(&lexer::TokenType::LBRACKET) {
                 parse_tree.children.push(self.bounds()?);
@@ -1498,7 +1506,13 @@ impl Parser {
 
             // < type or bounds >
             
-            // add this line to expect bounds
+            // FOR NOW, WE ARE GOING TO EXPECT BOUNDS
+            // IF NOT PROVIDING BOUNDS, ONE WOULD NEED
+            // TO DYNAMICALLY FIND AND SET THE PROPER
+            // SIZE IN MEMORY
+            // TO UNDO THIS, REMOVE THE FOLLOWING LINE
+            self.must_be(&lexer::TokenType::LBRACKET);
+
             if self.has(&lexer::TokenType::LBRACKET) {
                 parse_tree.children.push(self.bounds()?);
             }

@@ -376,11 +376,6 @@ impl SemanticAnalyzer {
             return Err(format!{"{} Type mismatch between {:?} and {:?}", self.err_header(tree), left_type, right_type});
         }
 
-        // Set the left_type if it was an unsized array
-        if left_type.array_dimensions == -1 {
-
-        }
-
         Ok(())
     }
 
@@ -762,12 +757,14 @@ impl SemanticAnalyzer {
         //tree.print();
         let sym_type = self.analyze_type(tree.children[1].as_ref().unwrap())?;
 
+        // ID
         if tree.children[0].as_ref().unwrap().parse_type == ParseType::ID {
             let id = unwrap_id_tree(tree.children[0].as_ref().unwrap());
 
             println!{"Adding symbol {} of type {:?}", id, sym_type};
             self.symbol_table.add_symbol(id, sym_type.clone())?;
         }
+        // IDS
         else {
             for id_tree in &tree.children[0].as_ref().unwrap().children {
                 let id = unwrap_id_tree(id_tree.as_ref().unwrap());

@@ -2,13 +2,13 @@
 definitions
     structure Person
         name: text
-        age: number
+        age: array [1 to 3] of number
     end structure
 
     a: number
     b: number
 
-    function hi() returns number
+    function hi(arr: array [1 to 10] of person) returns number
         if a = 1 then
             return a
         else if b = 1 then
@@ -20,8 +20,10 @@ definitions
 
 end definitions
 program
-
-    y: array of person = [{ "bob" , 1200 }, {"alice", 100}]
+    z: number = 1 + 2 + 3
+    c: number = z + 77 * 100 / 3
+    z = c ^ 2
+    y: number = z bit_or 0
 
     REPEAT FOREVER
         continue

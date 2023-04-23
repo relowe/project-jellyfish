@@ -14,8 +14,9 @@ use std::cmp::Ordering;
 // different pointers types that will point at the memory array
 #[derive(Debug, PartialEq, Clone)]
 pub enum PointerType {
+    LINK, // !!Link should only be used by namespace pointers!!
     PRIMITIVE,
-    ARRAY(i32, i32, Box<PrimitiveType>), // start and end index, and array type
+    ARRAY(Vec<(i32,i32)>, Box<PointerType>), // bounds and array type
     STRUCTURE(String), // structure ID
 }
 
@@ -80,18 +81,17 @@ impl Environment {
         env
     }
 
+    // Find a memory address of the requested size
+    // If no memory exists of that size, extend the
+    //  memory space to create size for it
     fn alloc(&mut self, size: usize) -> usize {
-        // find a memory address of the requested size
-        // if no memory exists of this size, create it at the
-        //  end of the memory space
-
         let mem_peek = self.heap.peek();
 
         if mem_peek.is_none() || mem_peek.unwrap().size < size {
             let addr:usize = self.memory.len();
 
             for i in 0..size {
-                self.memory.push(PrimitiveType::NOTHING);
+                self.memory.push(PrimitiveType::INITIALIZED);
             }
 
             return addr;
@@ -112,64 +112,118 @@ impl Environment {
         addr
     }
 
-    fn get_by_address(&mut self, p: Pointer) -> LiteralValue {
-        LiteralValue {
-            lit_type: PointerType::PRIMITIVE,
-            value: Vec::new()
+    // Recursively remove all the memory from a provided pointer
+    fn dealloc(&mut self, pointer: Pointer) {
+        let val = self.get_value(pointer.clone());
+        match val {
+            Ok(PrimitiveType::POINTER(p)) => {
+                if p.pointer_type != PointerType::LINK {
+                    self.dealloc(*p);
+                }
+                self.memory[pointer.address] = PrimitiveType::NOTHING
+            },
+            _ => self.memory[pointer.address] = PrimitiveType::NOTHING,
+        };
+    }
+
+    // Access the data in a given memory address (this returns a clone)
+    fn get_value(&self, pointer: Pointer) -> Result<PrimitiveType, String> {
+        println!{"Getting memory address {}", pointer.address}
+        if pointer.address >= self.memory.len() {
+            return Err("Accessing a memory address out of bounds".to_string());
         }
+
+        Ok(self.memory[pointer.address].clone())
     }
 
-    // < REFERENCE > (by value)
-    fn get_id_value(&self, id: String, recursive: bool) -> LiteralValue {
-        // returns the value at the provided id tree
-        // this will handle arrays and structs, etc
-        // if the value does not exist (is nothing), then throw an error
+    // Set the value at the specificed pointer address
+    // Assumes the pointer is to a valid address, and that the type matches
+    fn set_value(&mut self, pointer: Pointer, value: PrimitiveType) {
+        println!{"Setting address {} to {:?}", pointer.address, value};
+        self.memory[pointer.address] = value.clone();
+    }
 
-        LiteralValue {
-            lit_type: PointerType::PRIMITIVE,
-            value: Vec::new()
+    // Access the pointer value of a given literal ID
+    // If the provided ID does not exist, try to recurse
+    //  if provided ID cannot be found, error
+    fn get_id(&self, id: String, recursive: bool) -> Result<Pointer, String> {
+        println!{"Looking for id {}", id};
+
+        if recursive && self.namespace.len() > 1 {
+            for i in (0..(self.namespace.len()-1)).rev() {
+                if self.namespace[i].contains_key(&id) {
+                    return Ok(self.namespace[i].get(&id).unwrap().clone());
+                }
+            }
         }
-    }
-
-    // < REFERENCE > (by reference)
-    fn get_id_address(&self, id: String, recursive: bool) -> Pointer {
-        // returns the address at the given id tree
-
-        Pointer {
-            address: 0,
-            size: 0,
-            pointer_type: PointerType::PRIMITIVE,
+        else {
+            if self.namespace[self.namespace.len()-1].contains_key(&id) {
+                return Ok(self.namespace[self.namespace.len()-1].get(&id).unwrap().clone());
+            }
         }
+
+        Err(format!{"Could not find id '{}' in the namespace", id})
     }
 
-    // < VARDEF >
-    fn insert_name(&mut self, id: String, var_type: SymbolType) -> Pointer {
-        // inserts a name into the namespace using the provided parse tree
-        // if the name exists already, error
-
-
-        Pointer {
-            address: 0,
-            size: 0,
-            pointer_type: PointerType::PRIMITIVE,
+    // Set the pointer for a given ID
+    // If the ID does not exist, error
+    fn set_id(&mut self, id: String, pointer: Pointer) -> Result<(), String> {
+        println!{"Setting id {} to {:?}", id, pointer};
+        for i in (0..(self.namespace.len()-1)).rev() {
+            if self.namespace[i].contains_key(&id) {
+                self.namespace[i].insert(id, pointer.clone());
+                return Ok(());
+            }
         }
+
+        Err(format!{"Could not find id '{}' in the namespace", id})
     }
 
-    fn set_value(&mut self, pointer: Pointer, value: LiteralValue) {
-        // sets the value at the pointer
-        // for arrays, this will run a for-each loop
-        // for structures, this will also run a for-each loop
-        // complicated structures may need a recursive calls
+    // Insert a new ID with a pointer value
+    // If the ID exists (in the current namespace)
+    fn insert_id(&mut self, id: String, pointer: Pointer) -> Result<(), String> {
+        println!{"Adding new id {} with value {:?}", id, pointer};
+        let len = self.namespace.len()-1;
+
+        if self.namespace[len].contains_key(&id) {
+            return Err(format!{"Cannot have duplicate variables {}", id});
+        }
+
+        self.namespace[len].insert(id, pointer);
+        Ok(())
     }
 
+
+
+    // Scope in by making a new namespace
     fn scope_in(&mut self) {
-        // scope in the environment
+        self.namespace.push(HashMap::new());
     }
 
+    // Scope out, deleting the last namespace and all addresses
+    //  associated with that namespace
     fn scope_out(&mut self) {
-        // scope out the environment and delete all
-        // the memory used by the previous scope (namespace)
-        // this is essentially dealloc
+        let names = self.namespace.pop().expect("Can not scope out further");
+
+        // This is a very inneficient O(n^2)
+        //  check for existing pointers, but
+        //  our language is simple enough
+        //  that it shouldn't be a huge
+        //  time loss
+        for ptr in names.values() {
+            let mut seen = false;
+            for i in 0..(self.namespace.len()-1) {
+                if self.namespace[i].values().any(|val| val == ptr) {
+                    seen = true;
+                    break;
+                }
+            }
+            if !seen {
+                self.dealloc(ptr.clone());
+            }
+        }
+
+        self.build_heap();
     }
 
     fn build_heap(&mut self) {
@@ -180,6 +234,10 @@ impl Environment {
 
         let mut addr: usize = 0;
         self.heap.clear();
+
+        while self.memory[self.memory.len()-1] == PrimitiveType::NOTHING {
+            self.memory.pop();
+        }
 
         while addr < self.memory.len() {
             if self.memory[addr] != PrimitiveType::NOTHING {
@@ -205,11 +263,71 @@ impl Environment {
  
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct LiteralType {
+    lit_type: String,
+    is_array: bool,
+}
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
+pub enum LiteralOrPrimitive {
+    LITERAL(LiteralValue),
+    PRIMITIVE(PrimitiveType),
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct LiteralValue {
-    lit_type: PointerType,
-    value: Vec<PrimitiveType>
+    lit_type: String,
+    is_array: bool,
+    value: Vec<LiteralOrPrimitive>
+}
+
+impl LiteralValue {
+    fn null() -> Self {
+        LiteralValue {
+            lit_type: "nothing".to_string(),
+            is_array: false,
+            value: Vec::new(),
+        }
+    }
+
+    fn from_number(n: f64) -> Self {
+        LiteralValue {
+            lit_type: "number".to_string(),
+            is_array: false,
+            value: vec![LiteralOrPrimitive::PRIMITIVE(PrimitiveType::NUMBER(n))],
+        }
+    }
+
+    fn from_text(t: String) -> Self {
+        LiteralValue {
+            lit_type: "text".to_string(),
+            is_array: false,
+            value: vec![LiteralOrPrimitive::PRIMITIVE(PrimitiveType::TEXT(t))],
+        }
+    }
+
+    fn extract_number(&self) -> Option<f64> {
+        if self.lit_type != "number".to_string() || self.is_array {
+            return None;
+        }
+        
+        match self.value[0] {
+            LiteralOrPrimitive::PRIMITIVE(PrimitiveType::NUMBER(n)) => Some(n),
+            _ => None,
+        }
+    }
+
+    fn extract_text(&self) -> Option<String> {
+        if self.lit_type != "text".to_string() || self.is_array {
+            return None;
+        }
+        
+        match &self.value[0] {
+            LiteralOrPrimitive::PRIMITIVE(PrimitiveType::TEXT(t)) => Some(t.to_string()),
+            _ => None,
+        }
+    }
 }
 
 // =========================
@@ -241,19 +359,13 @@ pub fn unwrap_lit_tree(tree: &ParseTree) -> String {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct SymbolType {
-    pub basic_type: String,
-    pub is_pointer: bool,
-    pub array_dimensions: Vec<(i32, i32)>,
-}
-
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum PrimitiveType {
     NUMBER(f64),
     TEXT(String),
     NOTHING,
+    INITIALIZED, // memory created for a variable that isn't in use yet
     POINTER(Box<Pointer>),
 }
 
@@ -263,24 +375,6 @@ impl From <PrimitiveType> for bool {
             PrimitiveType::TEXT(t) => t.len() > 0,
             PrimitiveType::NUMBER(n) => n != 0.0,
             _ => false,
-        }
-    }
-}
-
-impl From <PrimitiveType> for i32 {
-    fn from(t: PrimitiveType) -> i32 {
-        match t {
-            PrimitiveType::NUMBER(n) => n as i32,
-            _ => 0,
-        }
-    }
-}
-
-impl From <PrimitiveType> for String {
-    fn from(t: PrimitiveType) -> String {
-        match t {
-            PrimitiveType::TEXT(t) => t,
-            _ => "".to_string(),
         }
     }
 }
@@ -295,9 +389,10 @@ pub enum LoopStatus {
 
 pub struct Interpreter {
     symbol_table: SymbolTable,
-    return_value: PrimitiveType,
+    return_value: LiteralValue,
     loop_status: LoopStatus,
-    memory: (),
+    in_function_call: i32,
+    env: Environment,
 }
 
 impl Interpreter {
@@ -305,10 +400,95 @@ impl Interpreter {
         let symtab = SemanticAnalyzer::new().analyze(tree).expect("Semantic Analyzer errored");
         Interpreter {
             symbol_table: symtab,
-            return_value: PrimitiveType::NOTHING,
+            return_value: LiteralValue::null(),
             loop_status: LoopStatus::DEFAULT,
-            memory: (),
+            in_function_call: 0,
+            env: Environment::new(),
         }
+    }
+
+    // Get the amount of memory needed for a strucutre,
+    //  this will just be the number of key names in the structure
+    pub fn get_struct_size(&self, id: String) -> Result<usize, String> {
+        if self.symbol_table.struct_args.contains_key(&id) {
+            return Ok(self.symbol_table.struct_args[&id].keys().len());
+        }
+
+        Err(format!{"Cannot find strucutre {}", id})
+    }
+
+    // A helper method to move a literal value
+    //  into memory, this will allocate any unallocated
+    //  memory for substructures (like arrays of structures, or structs inside structs)
+    // This does not do type checking, but does do size/structure checking
+    fn set_literal_in_memory(&mut self, pointer: Pointer, lit: LiteralValue) -> Result<(), String> {
+        match pointer.pointer_type {
+            // Just set the value for a primitive
+            PointerType::PRIMITIVE => {
+                if lit.is_array || (lit.lit_type != "number".to_string() && lit.lit_type != "text".to_string()) {
+                    return Err("Cannot set a primitive type (text/number) equal to a non-primitive type".to_string());
+                }
+                match &lit.value[0] {
+                    LiteralOrPrimitive::PRIMITIVE(p) => self.env.set_value(pointer, p.clone()),
+                    _ => {return Err("Cannot set a primitive type (text/number) equal to a non-primitive type".to_string()); }
+                };        
+            }
+            // For an array, set the value for all its children
+            PointerType::ARRAY(bounds, arr_pointer_type) => {
+                if (bounds[0].0 - bounds[0].1).abs() != lit.value.len() as i32 {
+                    return Err("Array sizes do not match".to_string());
+                }
+
+                let mut ptr = Pointer {
+                    pointer_type: *arr_pointer_type.clone(),
+                    size: 1, //TODO
+                    address: pointer.address.clone(),
+                };
+
+                for i in 0..pointer.size {
+                    let val = &lit.value[i];
+                    ptr.address = pointer.address + i;
+                    
+                    match val {
+                        LiteralOrPrimitive::LITERAL(l) => { 
+                            // see if the memory address already has a pointer
+                            // if not make a pointer
+                            // get that pointer
+                            // recursive call to set literal to new value
+                        },
+                        LiteralOrPrimitive::PRIMITIVE(p) => {
+                            self.env.set_value(ptr.clone(), p.clone());
+                        }
+                    }
+                }
+            }
+            PointerType::STRUCTURE(name) => {
+            }
+            PointerType::LINK => {
+
+            }
+        }
+
+        println!{"+++++++++++++++++ ENVIRONMENT +++++++++++++++++++\n{:?}", self.env};
+
+        Ok(())
+    }
+
+    // Using the provided pointer, clone and wrap up the provided memory into
+    //  a literal value. 
+    // TODO
+    fn get_literal_in_memory(&mut self, pointer: Pointer) -> Result<LiteralValue, String> {
+        if pointer.pointer_type == PointerType::PRIMITIVE {
+            let val = self.env.get_value(pointer)?;
+
+            return Ok(match val {
+                PrimitiveType::NUMBER(n) => LiteralValue::from_number(n),
+                PrimitiveType::TEXT(t) => LiteralValue::from_text(t),
+                _ => LiteralValue::null(),
+            });
+        }
+
+        Ok(LiteralValue::null())
     }
 
     pub fn eval(&mut self, tree: &ParseTree) -> Result<(), String> {
@@ -328,6 +508,7 @@ impl Interpreter {
 
     /// 
     fn eval_body(&mut self, tree: &ParseTree) -> Result<(), String> {
+        println!{"EVAL BODY"};
         let mut is_other: bool = false;
         for child in &tree.children {
             match child.as_ref().unwrap().parse_type {
@@ -366,14 +547,155 @@ impl Interpreter {
 
     /// Todo Memory
     /// 
-    fn eval_resolvable(&mut self, tree: &ParseTree) -> Result<PrimitiveType, String> {
-        Ok(PrimitiveType::NOTHING)
+    fn eval_resolvable(&mut self, tree: &ParseTree) -> Result<LiteralValue, String> {
+        // Catch literals
+        if tree.parse_type == ParseType::LIT {
+            return match &tree.token.token_type {
+                TokenType::NUMBER(n) => Ok(LiteralValue::from_number(n.clone())),
+                TokenType::TEXT(t) => Ok(LiteralValue::from_text(t.clone())),
+                _ => Ok(LiteralValue::null())
+            }
+        }
+
+        // Catch binary operators
+        else if tree.parse_type == ParseType::BINOP {
+            let left = self.eval_resolvable(tree.children[0].as_ref().unwrap())?;
+            let right = self.eval_resolvable(tree.children[1].as_ref().unwrap())?;
+
+            if left.is_array || right.is_array {
+                return Err("Cannot perform binary operations on arrays".to_string());
+            }
+
+            if left.lit_type == "text".to_string() {
+                let mut s:String = left.extract_text().unwrap_or("".to_string());
+                s.push_str(&right.extract_text().unwrap_or("".to_string()));
+
+                return Ok(LiteralValue::from_text(s));
+            }
+            else {
+                let left_val: f64 = left.extract_number().unwrap_or(0.0);
+                let right_val: f64 = right.extract_number().unwrap_or(0.0);
+
+                if tree.token.token_type == TokenType::DIV &&
+                   right_val == 0.0 {
+                    return Err("Cannot divide by zero".to_string());
+                }
+
+                let result: f64 = match tree.token.token_type {
+                    TokenType::ADD => left_val + right_val,
+                    TokenType::SUB => left_val - right_val,
+                    TokenType::MUL => left_val * right_val,
+                    TokenType::DIV => left_val / right_val,
+                    TokenType::POW => left_val.powf(right_val),
+                    TokenType::MOD => ((left_val as i32) % (right_val as i32)) as f64,
+                    TokenType::BAND => ((left_val as i32) & (right_val as i32)) as f64,
+                    TokenType::BOR => ((left_val as i32) | (right_val as i32)) as f64,
+                    TokenType::BXOR => ((left_val as i32) ^ (right_val as i32)) as f64,
+                    TokenType::BSL => ((left_val as i32) << (right_val as i32)) as f64,
+                    TokenType::BSR => ((left_val as i32) >> (right_val as i32)) as f64,
+                    _ => 0.0,
+                };
+
+                println!{"DID MATH, GOT VALUE {} {} {} => {}", left_val, tree.token.lexeme.clone().unwrap_or("".to_string()), right_val, result};
+
+                return Ok(LiteralValue::from_number(result));
+            }
+        }
+
+        // Catch references
+        else {
+            let pointer = self.eval_reference(tree)?;
+            return self.get_literal_in_memory(pointer);
+        }
+        
+        Ok(LiteralValue::null())
     }
 
-    /// Todo Memory
-    /// 
-    fn eval_vardef(&mut self, tree: &ParseTree) -> Result<PrimitiveType, String> {
-        Ok(PrimitiveType::NOTHING)
+    /// Will evaluate the type of variable name and create memory space
+    ///  for it. If it is a pointer, this space will not be created
+    ///  (a link will be made for it instead)
+    /// Assignment will be in charge of setting the pointer value
+    fn eval_vardef(&mut self, tree: &ParseTree) -> Result<Pointer, String> {
+        println!{"EVAL VARDEF"};
+        // Get the type of variable
+        let mut pointer = Pointer{
+            pointer_type: PointerType::PRIMITIVE,
+            size: 1,
+            address: 0,
+        };
+
+        // Look for array definition
+        let type_tree = tree.children[1].as_ref().unwrap().clone();
+        if type_tree.parse_type == ParseType::ARRAYDEF {
+            // Build the bounds for this array
+            let mut bounds: Vec<(i32, i32)> = Vec::new();
+            let mut size: usize = 0;
+
+            for bound_tree in type_tree.children[0].as_ref().unwrap().clone().children {
+                let start: i32;
+                let end: i32;
+                let mut res: LiteralValue;
+                if bound_tree.as_ref().unwrap().children[0].is_none() {
+                    start = 1;
+                }
+                else {
+                    res = self.eval_resolvable(bound_tree.as_ref().unwrap().children[0].as_ref().unwrap())?;
+                    start = res.extract_number().unwrap_or(1.0) as i32;
+                }
+
+                res = self.eval_resolvable(bound_tree.as_ref().unwrap().children[1].as_ref().unwrap())?;
+                end = res.extract_number().unwrap_or(1.0) as i32;
+
+                size += (end - start).abs() as usize;
+                bounds.push((start, end));
+            }
+
+            // Find the actual type
+            let var_type = unwrap_type_tree(type_tree.children[1].as_ref().unwrap());
+            if var_type != "number".to_string() && var_type != "text".to_string() {
+                let struct_pointer = PointerType::STRUCTURE(var_type);
+                pointer.pointer_type = PointerType::ARRAY(bounds, Box::new(struct_pointer));
+            }
+            else {
+                pointer.pointer_type = PointerType::ARRAY(bounds, Box::new(PointerType::PRIMITIVE));
+            }
+
+            pointer.size = size as usize;
+        }
+        // Else check for pointers
+        else if type_tree.parse_type == ParseType::POINTER {
+            pointer.pointer_type = PointerType::LINK;
+        }
+        // Otherwise, look for structures/primitives
+        else {
+            let var_type = unwrap_type_tree(&type_tree);
+            if var_type != "number".to_string() && var_type != "text".to_string() {
+                pointer.pointer_type = PointerType::STRUCTURE(var_type.clone());
+                pointer.size = self.get_struct_size(var_type)?;
+            }
+        }
+
+        // Make the actual allocations
+        // ID
+        if tree.children[0].as_ref().unwrap().parse_type == ParseType::ID {
+            let id = unwrap_id_tree(tree.children[0].as_ref().unwrap());
+
+            println!{"Adding symbol {}", id};
+            pointer.address = self.env.alloc(pointer.size.clone());
+            self.env.insert_id(id, pointer.clone());
+        }
+        // IDS
+        else {
+            for id_tree in &tree.children[0].as_ref().unwrap().children {
+                let id = unwrap_id_tree(id_tree.as_ref().unwrap());
+
+                println!{"Adding symbol {}", id};            
+                pointer.address = self.env.alloc(pointer.size.clone());
+                self.env.insert_id(id, pointer.clone());
+            }
+        }
+
+        Ok(pointer)
     }
 
     ///            <>!=      if   elif    else
@@ -470,12 +792,41 @@ impl Interpreter {
     /// Todo Memory
     /// 
     fn eval_assignment(&mut self, tree: &ParseTree) -> Result<(), String> {
+
+        // Get the value to assign
+        let res = self.eval_resolvable(tree.children[1].as_ref().unwrap())?;
+
+        // Get the address of where to assign it
+        let pointer: Pointer;
+        if tree.children[0].as_ref().unwrap().parse_type == ParseType::VARDEF {
+            pointer = self.eval_vardef(tree.children[0].as_ref().unwrap())?;
+        }
+        else {
+            pointer = self.eval_reference(tree.children[0].as_ref().unwrap())?;
+        }
+
+        // Make the assignment
+        self.set_literal_in_memory(pointer, res)?;
+
         Ok(())
+    }
+
+    fn eval_reference(&mut self, tree: &ParseTree) -> Result<Pointer, String> {
+
+        if tree.parse_type == ParseType::ID {
+            return self.env.get_id(unwrap_id_tree(&tree), self.in_function_call == 0);
+        }
+
+        Ok(Pointer{
+            pointer_type: PointerType::PRIMITIVE,
+            address: 0,
+            size: 0,
+        })
     }
 
     /// 
     fn eval_return(&mut self, tree: &ParseTree) -> Result<(), String> {
-        self.return_value = PrimitiveType::NOTHING;
+        self.return_value = LiteralValue::null();
         self.loop_status = LoopStatus::RETURN;
 
         // Check to see if the return type is nothing
@@ -500,55 +851,11 @@ impl Interpreter {
     fn eval_break(&mut self, tree: &ParseTree) -> Result<(), String> {
         self.loop_status = LoopStatus::BREAK;
         Ok(())
-    }
-
-    fn eval_type(&mut self, tree: &ParseTree) -> Result<SymbolType, String> {
-        //tree.print();
-
-        let mut curr_tree = tree;
-        let mut is_pointer = false;
-        let mut array_dimensions: Vec<(i32, i32)> = Vec::new();
-
-        if curr_tree.parse_type == ParseType::POINTER {
-            is_pointer = true;
-            curr_tree = curr_tree.children[0].as_ref().unwrap();
-        }
-
-        if curr_tree.parse_type == ParseType::ARRAYDEF {
-            //curr_tree.print();
-
-            // If there are defined bounds, make sure they are integers
-            // This will also set the array_dimensions
-            // Otherwise, we don't know the current dimensions until later
-            if curr_tree.children[0].as_ref().is_some() {
-                let bounds_tree = curr_tree.children[0].as_ref().unwrap();
-
-                for bound in &bounds_tree.children {
-                    let mut bound_type;
-                    if bound.as_ref().unwrap().children[0].as_ref().is_some() {
-                        bound_type = self.eval_resolvable(bound.as_ref().unwrap().children[0].as_ref().unwrap())?;
-                    }
-
-                    bound_type = self.eval_resolvable(bound.as_ref().unwrap().children[1].as_ref().unwrap())?;
-                }
-            }
-
-            curr_tree = curr_tree.children[1].as_ref().unwrap();
-        }
-
-        let basic_type = unwrap_type_tree(&curr_tree);
-        Ok(SymbolType{
-            basic_type: basic_type,
-            array_dimensions: array_dimensions,
-            is_pointer: is_pointer,
-        })
-    }   
-
-
+    }  
 }
 
 pub fn main() {
-    /*
+
     let args: Vec<String> = env::args().collect();
 
     // create parser
@@ -573,27 +880,5 @@ pub fn main() {
 
     let mut int = Interpreter::new(tree.as_ref().unwrap());
     int.eval(tree.as_ref().unwrap()).unwrap();
-    */
 
-    let mut env = Environment::new();
-
-    for i in 0..10 {
-        println!{"Alloc {}: {:?}", i, env.alloc(1)};
-
-        if i % 2 == 0 {
-            env.memory.push(PrimitiveType::NUMBER(5.0)); 
-        }
-    }
-
-    env.build_heap();
-
-    println!{"{:?}", env};
-
-    env.memory.push(PrimitiveType::NUMBER(5.0));
-
-    for i in 0..2 {
-        println!{"Alloc {}: {:?}", i, env.alloc(1)};
-    }
-
-    println!{"{:?}", env};
 }
