@@ -2,7 +2,7 @@
 definitions
     structure Person
         name: text
-        age: array [1 to 3] of number
+        age: number
     end structure
 
     a: number
@@ -25,8 +25,12 @@ program
     z = c ^ 2
     y: number = z bit_or 0
 
+    arr: array [3, 1 to 2] of number = [[1, 9], [2, 8], [3, 7]]
+
+    arr_two: array [1 to 2] of person = [{"bill", 23}, {"jenna", 13}]
+
     REPEAT FOREVER
-        continue
+        break
     end repeat
 
 end program

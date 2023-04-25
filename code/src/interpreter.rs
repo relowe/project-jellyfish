@@ -266,65 +266,63 @@ impl Environment {
 #[derive(Debug, PartialEq, Clone)]
 pub struct LiteralType {
     lit_type: String,
-    is_array: bool,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum LiteralOrPrimitive {
-    LITERAL(LiteralValue),
-    PRIMITIVE(PrimitiveType),
+    is_primitive: bool,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct LiteralValue {
     lit_type: String,
-    is_array: bool,
-    value: Vec<LiteralOrPrimitive>
+    is_primitive: bool,
+    values: Option<Vec<LiteralValue>>,
+    value: Option<PrimitiveType>,
 }
 
 impl LiteralValue {
     fn null() -> Self {
         LiteralValue {
             lit_type: "nothing".to_string(),
-            is_array: false,
-            value: Vec::new(),
+            is_primitive: true,
+            values: None,
+            value: Some(PrimitiveType::NOTHING),
         }
     }
 
     fn from_number(n: f64) -> Self {
         LiteralValue {
             lit_type: "number".to_string(),
-            is_array: false,
-            value: vec![LiteralOrPrimitive::PRIMITIVE(PrimitiveType::NUMBER(n))],
+            is_primitive: true,
+            value: Some(PrimitiveType::NUMBER(n)),
+            values: None,
         }
     }
 
     fn from_text(t: String) -> Self {
         LiteralValue {
             lit_type: "text".to_string(),
-            is_array: false,
-            value: vec![LiteralOrPrimitive::PRIMITIVE(PrimitiveType::TEXT(t))],
+            is_primitive: true,
+            value: Some(PrimitiveType::TEXT(t)),
+            values: None,
         }
     }
 
     fn extract_number(&self) -> Option<f64> {
-        if self.lit_type != "number".to_string() || self.is_array {
+        if self.lit_type != "number".to_string() || !self.is_primitive {
             return None;
         }
         
-        match self.value[0] {
-            LiteralOrPrimitive::PRIMITIVE(PrimitiveType::NUMBER(n)) => Some(n),
+        match self.value.as_ref().unwrap() {
+            PrimitiveType::NUMBER(n) => Some(*n),
             _ => None,
         }
     }
 
     fn extract_text(&self) -> Option<String> {
-        if self.lit_type != "text".to_string() || self.is_array {
+        if self.lit_type != "text".to_string() || !self.is_primitive {
             return None;
         }
         
-        match &self.value[0] {
-            LiteralOrPrimitive::PRIMITIVE(PrimitiveType::TEXT(t)) => Some(t.to_string()),
+        match self.value.as_ref().unwrap() {
+            PrimitiveType::TEXT(t) => Some(t.to_string()),
             _ => None,
         }
     }
@@ -425,51 +423,127 @@ impl Interpreter {
         match pointer.pointer_type {
             // Just set the value for a primitive
             PointerType::PRIMITIVE => {
-                if lit.is_array || (lit.lit_type != "number".to_string() && lit.lit_type != "text".to_string()) {
+                if !lit.is_primitive || (lit.lit_type != "number".to_string() && lit.lit_type != "text".to_string()) {
                     return Err("Cannot set a primitive type (text/number) equal to a non-primitive type".to_string());
                 }
-                match &lit.value[0] {
-                    LiteralOrPrimitive::PRIMITIVE(p) => self.env.set_value(pointer, p.clone()),
-                    _ => {return Err("Cannot set a primitive type (text/number) equal to a non-primitive type".to_string()); }
-                };        
+                self.env.set_value(pointer, lit.value.unwrap().clone());
             }
             // For an array, set the value for all its children
             PointerType::ARRAY(bounds, arr_pointer_type) => {
-                if (bounds[0].0 - bounds[0].1).abs() != lit.value.len() as i32 {
-                    return Err("Array sizes do not match".to_string());
+                if lit.is_primitive {
+                    return Err(format!{"Expected array, got a primitive (text/number): {:?}", lit});
                 }
 
+                if (bounds[0].0 - bounds[0].1).abs() + 1 != lit.values.as_ref().unwrap().len() as i32 {
+                    return Err(format!{"Expected array of size {}, got array of size {}", (bounds[0].0 - bounds[0].1).abs() + 1, lit.values.as_ref().unwrap().len()});
+                }
+
+                // If there are more bounds (multi-dimensional array) make a
+                //  new pointer with the new bounds, and find how far to
+                //  offset for each element
+                // (We are serializing the array in memory)
+                let mut pointer_type = *arr_pointer_type.clone();
+                let mut offset_scale = 1;
+                if bounds.len() > 1 {
+                    let mut new_bounds: Vec<(i32, i32)> = Vec::new();
+                    for i in 1..bounds.len() {
+                        new_bounds.push(bounds[i].clone());
+                        offset_scale = offset_scale * ((bounds[i].0 - bounds[i].1).abs() + 1);
+                    }
+                    // re-wrap back into an array
+                    pointer_type = PointerType::ARRAY(new_bounds, Box::new(pointer_type));
+                }
+
+                println!("Offset scale = {}", offset_scale);
+
+                // Create a running pointer for the array
                 let mut ptr = Pointer {
-                    pointer_type: *arr_pointer_type.clone(),
-                    size: 1, //TODO
+                    pointer_type: pointer_type.clone(),
+                    size: offset_scale as usize,
                     address: pointer.address.clone(),
                 };
 
-                for i in 0..pointer.size {
-                    let val = &lit.value[i];
-                    ptr.address = pointer.address + i;
-                    
-                    match val {
-                        LiteralOrPrimitive::LITERAL(l) => { 
-                            // see if the memory address already has a pointer
-                            // if not make a pointer
-                            // get that pointer
-                            // recursive call to set literal to new value
-                        },
-                        LiteralOrPrimitive::PRIMITIVE(p) => {
-                            self.env.set_value(ptr.clone(), p.clone());
-                        }
+                // Recurse to put all values in array
+                for i in 0..((bounds[0].0 - bounds[0].1).abs() + 1) {
+                    let val = &lit.values.as_ref().unwrap()[i as usize];
+                    ptr.address = pointer.address + (i*offset_scale) as usize;
+
+                    // If this is a primitive now, we can just set it by recursing
+                    if val.is_primitive || val.lit_type == "array".to_string() {
+                        self.set_literal_in_memory(ptr.clone(), val.clone())?;
                     }
+                    // Otherwise, we need to go to the current pointer
+                    //  (or make a new pointer if it doesn't exist)
+                    else {
+                        let at_addr = self.env.get_value(ptr.clone())?;
+                        println!{"Currently at address {:?}", at_addr};
+                        if at_addr == PrimitiveType::INITIALIZED || at_addr == PrimitiveType::NOTHING {
+                            // create a new pointer for space
+                            let s = match &pointer_type {
+                                PointerType::STRUCTURE(s) => s.to_string(),
+                                _ => "invlalid".to_string(),
+                            };
+
+                            let struct_size = self.get_struct_size(s.clone())?;
+                            let address = self.env.alloc(struct_size);
+                            let struct_ptr = Pointer{
+                                pointer_type: PointerType::STRUCTURE(s),
+                                size: struct_size,
+                                address: address,
+                            };
+
+                            // Set the value and recurse to fill it
+                            self.env.set_value(ptr.clone(), PrimitiveType::POINTER(Box::new(struct_ptr.clone())));
+                            self.set_literal_in_memory(struct_ptr.clone(), val.clone());
+                        }
+                        else {
+                            // This means we have a strucure already there, so we
+                            //  can pull the current pointer and recurse
+                            match at_addr {
+                                PrimitiveType::POINTER(p) => self.set_literal_in_memory(*p.clone(), val.clone()),
+                                _ => return Err("Cannot reference structure pointer in memory".to_string()),
+                            };
+                            
+                        }
+                    } 
                 }
             }
             PointerType::STRUCTURE(name) => {
+                // We know the number of arguments should match at this point,
+                //  but it doesn't hurt to check anyway
+                let struct_size = self.get_struct_size(name.clone())?;
+                if struct_size != lit.values.as_ref().unwrap().len() {
+                    return Err(format!{"Mismatched number of arguments for Structure '{}'", name});
+                }
+
+                // Create a running pointer to set values
+                let mut ptr = Pointer {
+                    pointer_type: PointerType::PRIMITIVE,
+                    size: 1,
+                    address: pointer.address.clone(),
+                };
+
+
+                // Loop through each child setting its value appropriately
+                let struct_args = self.symbol_table.struct_args.get(&name).expect("Could not load strucutre arguments").clone();
+                for (struct_arg, val) in struct_args.values().zip(lit.values.unwrap().iter()) {
+                    // Just set if this is primitive
+                    if struct_arg.basic_type == "number".to_string() || struct_arg.basic_type == "text".to_string() {
+                        self.set_literal_in_memory(ptr.clone(), val.clone());
+                        ptr.address += 1;
+                    }
+
+                    else {
+                        println!{"Need to set structure key {:?} to value {:?}", struct_arg, val};
+                    }
+                }
             }
             PointerType::LINK => {
 
             }
         }
 
-        println!{"+++++++++++++++++ ENVIRONMENT +++++++++++++++++++\n{:?}", self.env};
+        println!{"+++++++++++++++++ ENVIRONMENT MEMORY +++++++++++++++++++\n{:?}", self.env.memory};
 
         Ok(())
     }
@@ -562,7 +636,7 @@ impl Interpreter {
             let left = self.eval_resolvable(tree.children[0].as_ref().unwrap())?;
             let right = self.eval_resolvable(tree.children[1].as_ref().unwrap())?;
 
-            if left.is_array || right.is_array {
+            if !left.is_primitive || !right.is_primitive {
                 return Err("Cannot perform binary operations on arrays".to_string());
             }
 
@@ -603,9 +677,48 @@ impl Interpreter {
         }
 
         // Catch references
-        else {
+        else if tree.parse_type == ParseType::GETINDEX ||
+                tree.parse_type == ParseType::GETSTRUCT ||
+                tree.parse_type == ParseType::ID {
             let pointer = self.eval_reference(tree)?;
             return self.get_literal_in_memory(pointer);
+        }
+
+        // Catch function calls
+        else if tree.parse_type == ParseType::CALL {
+            // TODO
+        }
+
+        // Catch arrays (just shove in all children)
+        else if tree.parse_type == ParseType::ARRAYLIT {
+            let mut vec: Vec<LiteralValue> = Vec::new();
+
+            for child in &tree.children {
+                vec.push(self.eval_resolvable(child.as_ref().unwrap())?);
+            }
+
+            return Ok(LiteralValue{
+                lit_type: "array".to_string(),
+                is_primitive: false,
+                values: Some(vec),
+                value: None
+            });
+        }
+
+        // Catch strucutres (just shove in all children)
+        else if tree.parse_type == ParseType::STRUCTLIT {
+            let mut vec: Vec<LiteralValue> = Vec::new();
+
+            for child in &tree.children {
+                vec.push(self.eval_resolvable(child.as_ref().unwrap())?);
+            }
+
+            return Ok(LiteralValue{
+                lit_type: "strucutre".to_string(),
+                is_primitive: false,
+                values: Some(vec),
+                value: None
+            });
         }
         
         Ok(LiteralValue::null())
@@ -629,7 +742,7 @@ impl Interpreter {
         if type_tree.parse_type == ParseType::ARRAYDEF {
             // Build the bounds for this array
             let mut bounds: Vec<(i32, i32)> = Vec::new();
-            let mut size: usize = 0;
+            let mut size: usize = 1;
 
             for bound_tree in type_tree.children[0].as_ref().unwrap().clone().children {
                 let start: i32;
@@ -646,7 +759,7 @@ impl Interpreter {
                 res = self.eval_resolvable(bound_tree.as_ref().unwrap().children[1].as_ref().unwrap())?;
                 end = res.extract_number().unwrap_or(1.0) as i32;
 
-                size += (end - start).abs() as usize;
+                size *= ((end - start).abs() + 1) as usize;
                 bounds.push((start, end));
             }
 

@@ -634,7 +634,7 @@ impl SemanticAnalyzer {
 
         // Catch structures (and match children types)
         else if tree.parse_type == ParseType::STRUCTLIT {
-            println!{"Expected resolve type: {:?}", self.expected_resolve_type};
+            println!{"IN STRUCT > Expected resolve type: {:?}", self.expected_resolve_type};
 
             // Catch unexpected structures
             if self.expected_resolve_type.is_none() {
