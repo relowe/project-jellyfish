@@ -53,6 +53,7 @@ pub enum ParseType {
     POINTER,    // type for pointers specifically
     CHANGEABLE, // changeable modifier for types
     LINK,       // link modifier for types
+    LINKLIT,    // a literal used to denote that a reference is being linked
     ARRAYLIT,   // array literal
     STRUCTLIT,  // structure literal
     ARRAYDEF,   // define an array variable with (optional) bounds and type
@@ -1428,7 +1429,31 @@ impl Parser {
         self.eat(&lexer::TokenType::LCURLY)?;
 
         while !self.has(&lexer::TokenType::RCURLY) {
-            parse_tree.children.push(self.resolvable()?);
+            // LINK TO < ref-or-nothing >
+            if self.has(&lexer::TokenType::LINK) {
+                let mut child = ParseTree {
+                    parse_type: ParseType::LINKLIT,
+                    token: self.curr_token(),
+                    children: Vec::new(),
+                };
+                self.eat(&lexer::TokenType::LINK)?;
+                self.eat(&lexer::TokenType::TO)?;
+                
+                // < ref-or-nothing >
+                if self.has(&lexer::TokenType::NOTHING) {
+                    self.next()?;
+                    child.children.push(None);
+                }
+                else {
+                    child.children.push(self.reference()?);
+                }
+
+                parse_tree.children.push(Some(child));
+            }
+            // < resolvable >
+            else {
+                parse_tree.children.push(self.resolvable()?);
+            }
 
             if self.has(&lexer::TokenType::COMMA) {
                 self.next()?;

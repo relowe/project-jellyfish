@@ -577,7 +577,7 @@ impl SemanticAnalyzer {
             });
         }
         
-        // Catch arrays or structures (recursively unwrap them)
+        // Catch arrays (recursively unwrap them)
         else if tree.parse_type == ParseType::ARRAYLIT {
             println!{"Expected resolve type: {:?}", self.expected_resolve_type};
 
@@ -664,6 +664,21 @@ impl SemanticAnalyzer {
 
             self.expected_resolve_type = Some(ex_res_type.clone());
             return Ok(ex_res_type);
+        }
+
+        // Catch link literals
+        else if tree.parse_type == ParseType::LINKLIT {
+            if self.expected_resolve_type.is_none() {
+                return Err(format!{"{} unexpected link", self.err_header(tree)});
+            }
+
+            if tree.children[0].is_some() {
+                let res_type = self.analyze_reference(tree.children[0].as_ref().unwrap())?;
+                if res_type != self.expected_resolve_type.clone().unwrap() {
+                    return Err(format!{"{} Link to {:?} does not match expected link type {:?}", self.err_header(tree.children[0].as_ref().unwrap()), self.expected_resolve_type, res_type});
+                }
+            }
+            return Ok(self.expected_resolve_type.clone().unwrap());
         }
         
         //Err("error".to_string())

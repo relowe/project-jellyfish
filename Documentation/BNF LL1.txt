@@ -228,22 +228,38 @@
                            | NUMBER
                            | TEXT
                            | ID < ref-or-call > //pass in id
-                           | (LCURLY) < array-struct-lit >
+                           | (LCURLY) < struct-lit >
+                           | (LBRACKET) < array-lit >
 
 < ref-or-call >			 ::= LPAREN < call' >
 						   | < reference' >
 
-< array-struct-lit >     ::= LCURLY < array-struct-items > RCURLY
+< struct-lit >           ::= LCURLY < struct-items > RCURLY
 
-< array-struct-items >   ::= < resolvable > < array-struct-items' >
+< struct-items >         ::= < resolvable > < struct-items' >
+                           | LINK TO < ref-or-nothing >
                            | ''
 
-< array-struct-items' >  ::= COMMA < array-struct-items'' >
+< struct-items' >        ::= COMMA < struct-items'' >
 						   | ''
 
-< array-struct-items'' > ::= < resolvable > < array-struct-items' >
+< struct-items'' >       ::= < resolvable > < struct-items' >
+                           | LINK TO < ref-or-nothing >
 						   | ''
 
+< ref-or-nothing >       ::= NOTHING
+                           | < reference >
+
+< array-lit >            ::= LBRACKET < array-items > RBRACKET
+
+< array-items >          ::= < resolvable > < array-items' >
+                           | ''
+
+< array-items' >         ::= COMMA < array-items'' >
+                           | ''
+
+< array-items'' >        ::= < resolvable > < array-items' >
+                           | ''
 
 
 
