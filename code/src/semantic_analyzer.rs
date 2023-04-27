@@ -874,7 +874,7 @@ impl SemanticAnalyzer {
     fn analyze_repeat(&mut self, tree: &ParseTree) -> Result<(), String> {
         // Check if a number was passed to repeat that amount of times
         let repeat_type = self.analyze_resolvable(tree.children[0].as_ref().unwrap())?;
-        if repeat_type.basic_type != "number".to_string() || repeat_type.array_dimensions <= 0 {
+        if repeat_type.basic_type != "number".to_string() || repeat_type.array_dimensions != 0 {
             return Err(format!{"{} Repeat must be provided a number literal", self.err_header(tree.children[0].as_ref().unwrap())});
         }
 

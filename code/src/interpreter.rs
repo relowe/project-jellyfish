@@ -4,6 +4,7 @@ use std::{env, process};
 use crate::lexer::{TokenType};
 use crate::parser::{Parser, ParseTree, ParseType};
 use crate::semantic_analyzer::{SemanticAnalyzer, SymbolTable};
+use crate::library_handler;
 use std::collections::{HashMap, BinaryHeap};
 use std::cmp::Ordering;
 
@@ -312,7 +313,7 @@ pub struct LiteralValue {
 }
 
 impl LiteralValue {
-    fn null() -> Self {
+    pub fn null() -> Self {
         LiteralValue {
             lit_type: "nothing".to_string(),
             is_primitive: true,
@@ -321,7 +322,7 @@ impl LiteralValue {
         }
     }
 
-    fn from_number(n: f64) -> Self {
+    pub fn from_number(n: f64) -> Self {
         LiteralValue {
             lit_type: "number".to_string(),
             is_primitive: true,
@@ -330,7 +331,7 @@ impl LiteralValue {
         }
     }
 
-    fn from_text(t: String) -> Self {
+    pub fn from_text(t: String) -> Self {
         LiteralValue {
             lit_type: "text".to_string(),
             is_primitive: true,
@@ -339,7 +340,14 @@ impl LiteralValue {
         }
     }
 
-    fn extract_number(&self) -> Option<f64> {
+    pub fn from_bool(b: bool) -> Self {
+        if b {
+            return LiteralValue::from_number(1.0);
+        }
+        LiteralValue::from_number(0.0)
+    }
+
+    pub fn extract_number(&self) -> Option<f64> {
         if self.lit_type != "number".to_string() || !self.is_primitive {
             return None;
         }
@@ -350,7 +358,7 @@ impl LiteralValue {
         }
     }
 
-    fn extract_text(&self) -> Option<String> {
+    pub fn extract_text(&self) -> Option<String> {
         if self.lit_type != "text".to_string() || !self.is_primitive {
             return None;
         }
@@ -359,6 +367,51 @@ impl LiteralValue {
             PrimitiveType::TEXT(t) => Some(t.to_string()),
             _ => None,
         }
+    }
+
+    pub fn to_string(&self) -> String {
+        if self.is_primitive {
+            if self.lit_type == "text".to_string() {
+                return self.extract_text().unwrap_or("".to_string());
+            }
+            else {
+                return format!{"{}", self.extract_number().unwrap_or(0.0)};
+            }
+        }
+        
+        let mut s = String::new();
+
+        if self.lit_type == "structure".to_string() {
+            s.push_str("{");
+        }
+        else {
+            s.push_str("[");
+        }
+
+        for child in self.values.clone().unwrap() {
+            s.push_str(child.to_string().as_str());
+            s.push_str(",");
+        }
+
+        s.remove(s.len()-1);
+
+        if self.lit_type == "structure".to_string() {
+            s.push_str("}");
+        }
+        else {
+            s.push_str("]");
+        }
+
+        s
+    }
+}
+
+impl From <LiteralValue> for bool {
+    fn from(val: LiteralValue) -> bool {
+        if val.is_primitive {
+            return bool::from(val.value.unwrap());
+        }
+        return false;
     }
 }
 
@@ -970,12 +1023,18 @@ impl Interpreter {
 
         // Catch function calls
         else if tree.parse_type == ParseType::CALL {
-            // TODO
             // get all argument values
             let mut vals: Vec<LiteralValue> = Vec::new();
             for child in &tree.children[1].as_ref().unwrap().children {
                 vals.push(self.eval_resolvable(child.as_ref().unwrap())?);
             }
+
+            // If this is print, we handle it specially
+            let fn_id = unwrap_id_tree(tree.children[0].as_ref().unwrap());
+            if !self.function_defs.contains_key(&fn_id) {
+                return library_handler::handle_call(fn_id, vals);
+            }
+
             
             // scope in
             self.env.scope_in();
@@ -983,7 +1042,6 @@ impl Interpreter {
             // for each argument/param
             //  alloc space
             //  insert id
-            let fn_id = unwrap_id_tree(tree.children[0].as_ref().unwrap());
             let param_names: Vec<String>;
             let param_pointers: Vec<Pointer>;
             let body: ParseTree;
@@ -993,11 +1051,22 @@ impl Interpreter {
             param_pointers = self.function_defs[&fn_id].param_pointers.clone();
             body = self.function_defs[&fn_id].body.clone();
 
-            for ((val, name), pointer) in vals.iter().zip(param_names.iter()).zip(param_pointers.iter()) {
+            for (((val, name), pointer), i) in vals.iter().zip(param_names.iter()).zip(param_pointers.iter()).zip(0..vals.len()) {
                 let mut p = pointer.clone();
+
+                
                 p.address = self.env.alloc(pointer.size);
                 self.env.insert_id(name.clone(), p.clone())?;
-                self.set_literal_in_memory(p.clone(), val.clone())?;
+
+                match &p.pointer_type {
+                    PointerType::LINK(link_ptr) => {
+                        let ptr_box = Box::new(self.eval_reference(tree.children[1].as_ref().unwrap().children[i].as_ref().unwrap())?);
+                        self.env.set_value(p.clone(), PrimitiveType::POINTER(ptr_box));
+                    },
+                    _ => {
+                        self.set_literal_in_memory(p.clone(), val.clone())?;
+                    }
+                }
             }
 
 
@@ -1201,19 +1270,50 @@ impl Interpreter {
         Ok(())
     }
 
-    /// Todo Memory
+    /// Todo
     /// 
-    fn eval_conditional(&mut self, tree: &ParseTree) -> Result<PrimitiveType, String> {
-        Ok(PrimitiveType::NOTHING)
+    fn eval_conditional(&mut self, tree: &ParseTree) -> Result<LiteralValue, String> {
+        // Catch binary comparisons
+        if tree.parse_type == ParseType::BINCOMP {
+            let left = self.eval_conditional(tree.children[0].as_ref().unwrap())?;
+            let right = self.eval_conditional(tree.children[1].as_ref().unwrap())?;
+
+            if tree.token.token_type == TokenType::EQ {
+                return Ok(LiteralValue::from_bool(left == right));
+            }
+
+            if tree.token.token_type == TokenType::NE {
+                return Ok(LiteralValue::from_bool(left != right));
+            }
+            
+            let left_val: f64 = left.extract_number().unwrap_or(0.0);
+            let right_val: f64 = right.extract_number().unwrap_or(0.0);
+
+            let result: bool = match tree.token.token_type {
+                TokenType::LT => left_val < right_val,
+                TokenType::GT => left_val > right_val,
+                TokenType::LE => left_val <= right_val,
+                TokenType::GE => left_val >= right_val,
+                TokenType::AND => left_val == 1.0 && right_val == 1.0,
+                TokenType::OR => left_val == 1.0 || right_val == 1.0,
+                _ => false,
+            };
+
+            println!{"DID COMPARISON, GOT {}", result};
+
+            return Ok(LiteralValue::from_bool(result));
+        }
+
+        return self.eval_resolvable(tree);
     }
 
-    /// Todo Memory
+    /// Todo
     /// 
     fn eval_link(&mut self, tree: &ParseTree) -> Result<(), String> {
         Ok(())
     }
 
-    /// Todo Memory
+    /// Todo
     /// 
     fn eval_unlink(&mut self, tree: &ParseTree) -> Result<(), String> {
         Ok(())
