@@ -1,31 +1,39 @@
-
 definitions
-    structure Person
-        name: text
-        age: array [1 to 2] of number
+    structure node
+        value: number
+        next: link to node
     end structure
 
-    structure Node
-        val: number
-        next: link to Node
-    end structure
+    function collatz(n: number) returns number
+        if n mod 2 = 0 then
+            return n / 2
+        else
+            return 3 * n + 1
+        end if
+    end function
 
-    function hi(arr: array [1 to 10] of number) returns number
-        return 5
+    function max(arr: array [10] of number) returns number
+        max: number = arr[1]
+        index: number = 2
+
+        while index <= 10
+            print("At index ", index, " with value ", arr[index])
+
+            if arr[index] > max then
+                max = arr[index]
+            end if
+            index = index + 1
+        end while
+
+        return max
     end function
 
 end definitions
+
 program
-    a: number = 100
-    b: array [1 to 3] of number = [3, 2, 1]
-
-
-    print(a)
-
-    if a = 100 then
+    arr: array [1 to 3] of number = [1, 2, -10]
+    arrb: array [2 to 4] of number = [1, 2, -10]
+    if arr[1] = arrb[2] then
         print("yes")
-    else
-        print("no")
     end if
-
 end program

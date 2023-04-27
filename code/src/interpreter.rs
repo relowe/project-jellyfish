@@ -1012,6 +1012,27 @@ impl Interpreter {
             }
         }
 
+        // Catch negative
+        else if tree.parse_type == ParseType::NEG {
+            let lit = self.eval_resolvable(tree.children[0].as_ref().unwrap())?;
+            let val = lit.extract_number().unwrap_or(0.0);
+            return Ok(LiteralValue::from_number(-val));
+        }
+
+        // Catch absolute value
+        else if tree.parse_type == ParseType::ABS {
+            let lit = self.eval_resolvable(tree.children[0].as_ref().unwrap())?;
+            let val = lit.extract_number().unwrap_or(0.0);
+            return Ok(LiteralValue::from_number(val.abs()));
+        }
+
+        // Catch bitwise not
+        else if tree.parse_type == ParseType::BITNOT {
+            let lit = self.eval_resolvable(tree.children[0].as_ref().unwrap())?;
+            let val = lit.extract_number().unwrap_or(0.0);
+            return Ok(LiteralValue::from_number(!(val as i32) as f64));
+        }
+
         // Catch references
         else if tree.parse_type == ParseType::GETINDEX ||
                 tree.parse_type == ParseType::GETSTRUCT ||
@@ -1083,6 +1104,11 @@ impl Interpreter {
 
             // scope out
             self.env.scope_out();
+
+            // Handle return loop status
+            if self.loop_status == LoopStatus::RETURN {
+                self.loop_status = LoopStatus::DEFAULT;
+            }
 
             // return the return value
             return Ok(new_return_val);
@@ -1270,7 +1296,7 @@ impl Interpreter {
         Ok(())
     }
 
-    /// Todo
+
     /// 
     fn eval_conditional(&mut self, tree: &ParseTree) -> Result<LiteralValue, String> {
         // Catch binary comparisons
@@ -1337,7 +1363,7 @@ impl Interpreter {
             }
             if self.loop_status == LoopStatus::RETURN {
                 break;
-            }
+            }     
         }
 
         Ok(())
