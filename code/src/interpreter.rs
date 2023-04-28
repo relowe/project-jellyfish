@@ -1409,20 +1409,43 @@ impl Interpreter {
             self.env.scope_in();
             self.eval_body(tree.children[1].as_ref().unwrap())?;
             self.env.scope_out();
+
+            if self.loop_status == LoopStatus::CONTINUE {
+                self.loop_status = LoopStatus::DEFAULT;
+            }
+            else if self.loop_status == LoopStatus::BREAK {
+                self.loop_status = LoopStatus::DEFAULT;
+                break;
+            }
         }
 
         Ok(())
     }
 
-    /// Todo Memory
+    /// Todo
     /// 
     fn eval_repeat_for(&mut self, tree: &ParseTree) -> Result<(), String> {
+        
         Ok(())
     }
 
-    /// Todo Memory
     /// 
     fn eval_repeat_forever(&mut self, tree: &ParseTree) -> Result<(), String> {
+        
+        while true {
+            println!{"REPEATING"};
+            self.env.scope_in();
+            self.eval_body(tree.children[0].as_ref().unwrap())?;
+            self.env.scope_out();
+
+            if self.loop_status == LoopStatus::CONTINUE {
+                self.loop_status = LoopStatus::DEFAULT;
+            }
+            else if self.loop_status == LoopStatus::BREAK {
+                self.loop_status = LoopStatus::DEFAULT;
+                break;
+            }
+        }
         Ok(())
     }
 
@@ -1559,8 +1582,6 @@ impl Interpreter {
                 //  structure from memory. This will move into
                 //  the structure if the address in memory is
                 //  also a structure of the same name.
-                // Note: this could cause problems if a structures
-                //  first element is that structure again
                 match &ptr.pointer_type {
                     PointerType::STRUCTURE(_) => { 
                         ptr = match self.env.get_value(ptr.clone())? {
