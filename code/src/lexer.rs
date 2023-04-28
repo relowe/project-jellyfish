@@ -337,7 +337,11 @@ impl Lexer {
     pub fn lex_id(&mut self) -> Result<bool, &'static str> {
         let start_row = self.curr_row;
         let start_col = self.curr_col;
-        while self.curr_char.is_alphabetic() || self.curr_char == '_' {
+        if self.curr_char.is_alphabetic() {
+            self.curr_lex.push(self.curr_char);
+            self.consume()?;
+        }
+        while self.curr_char.is_alphanumeric() || self.curr_char == '_' {
             self.curr_lex.push(self.curr_char);
             self.consume()?;
         }
@@ -496,7 +500,7 @@ impl Lexer {
     }
 }
 
-fn main() {
+pub fn main() {
     let args: Vec<String> = env::args().collect();
 
     let mut lex: Lexer;

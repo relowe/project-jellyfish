@@ -1,39 +1,27 @@
 definitions
-    structure node
-        value: number
-        next: link to node
+    structure point
+        x: number
+        y: number
     end structure
 
-    function collatz(n: number) returns number
-        if n mod 2 = 0 then
-            return n / 2
-        else
-            return 3 * n + 1
-        end if
+    structure rectangle
+        p1: point
+        p2: point
+    end structure
+
+    function get_area(r: rectangle) returns number
+        width: number = +(r.p1.x - r.p2.x)
+        height: number = +(r.p1.y - r.p2.y)
+        return width * height
     end function
 
-    function max(arr: array [10] of number) returns number
-        max: number = arr[1]
-        index: number = 2
-
-        while index <= 10
-            print("At index ", index, " with value ", arr[index])
-
-            if arr[index] > max then
-                max = arr[index]
-            end if
-            index = index + 1
-        end while
-
-        return max
-    end function
 
 end definitions
 
 program
-    arr: array [1 to 3] of number = [1, 2, -10]
-    arrb: array [2 to 4] of number = [1, 2, -10]
-    if arr[1] = arrb[2] then
-        print("yes")
-    end if
+    r1: rectangle = {{0.5, 0.5}, {4, 4}}
+    r2: rectangle = {{1, 2}, {3, 3}}
+
+    print(r1, " = ", get_area(r1))
+    print(r2, " = ", get_area(r2))
 end program

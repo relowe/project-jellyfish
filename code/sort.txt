@@ -1,10 +1,11 @@
 definitions
-    function bubble_sort(arr: changeable array [1 to 10] of number) returns nothing
+    function bubble_sort(arr: changeable array [10] of number) returns nothing
         swapped : number = 1
         temp: number = 0
+        i: number = 1
         while swapped = 1
             swapped = 0
-            i : number = 1
+            i = 1
             repeat 9 times
                 if arr[i] > arr[i+1] then
                     temp = arr[i]
@@ -20,7 +21,7 @@ end definitions
 
 program
     nums : array [10] of number = [7, 2, 1, 8, 6, 3, 5, 4, 9, 10]
-    display("Before sorting:", nums)
+    print("Before sorting:", nums)
     bubble_sort(nums)
-    display("After sorting:", nums)
+    print("After sorting:", nums)
 end program

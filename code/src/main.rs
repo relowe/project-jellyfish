@@ -10,8 +10,9 @@ mod library_handler;
 use std::env;
 
 fn main() {
-    //parser::main()
     env::set_var("RUST_BACKTRACE", "1");
-    // semantic_analyzer::main()
+    //lexer::main()
+    //parser::main()
+    //semantic_analyzer::main()
     interpreter::main()
 }

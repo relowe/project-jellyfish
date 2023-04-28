@@ -163,6 +163,7 @@ impl Environment {
 
     // Access the data in a given memory address (this returns a clone)
     fn get_value(&self, pointer: Pointer) -> Result<PrimitiveType, String> {
+        println!{"{:?}", self.memory};
         println!{"Getting memory address {}", pointer.address}
         if pointer.address >= self.memory.len() {
             return Err("Accessing a memory address out of bounds".to_string());
@@ -253,8 +254,15 @@ impl Environment {
                     break;
                 }
             }
-            if !seen {
-                self.dealloc(ptr.clone());
+            if !seen {            
+                match &ptr.pointer_type {
+                    PointerType::LINK(p) => {
+                        self.memory[ptr.address] = PrimitiveType::NOTHING;
+                    }
+                    _ => {
+                        self.dealloc(ptr.clone());
+                    }
+                }
             }
         }
 
@@ -381,11 +389,11 @@ impl LiteralValue {
         
         let mut s = String::new();
 
-        if self.lit_type == "structure".to_string() {
-            s.push_str("{");
+        if self.lit_type == "array".to_string() {
+            s.push_str("[");
         }
         else {
-            s.push_str("[");
+            s.push_str("{");
         }
 
         for child in self.values.clone().unwrap() {
@@ -395,11 +403,11 @@ impl LiteralValue {
 
         s.remove(s.len()-1);
 
-        if self.lit_type == "structure".to_string() {
-            s.push_str("}");
+        if self.lit_type == "array".to_string() {
+            s.push_str("]");
         }
         else {
-            s.push_str("]");
+            s.push_str("}");
         }
 
         s
@@ -512,7 +520,24 @@ impl Interpreter {
             return Ok(self.symbol_table.struct_args[&id].keys().len());
         }
 
-        Err(format!{"Cannot find strucutre {}", id})
+        Err(format!{"Cannot find structure {}", id})
+    }
+
+    // Get the offset of a key in the memory of a structure
+    pub fn get_struct_key_offset(&self, struct_id: String, key_id: String) -> Result<usize, String> {
+        if self.symbol_table.struct_args.contains_key(&struct_id) {
+            let map = &self.symbol_table.struct_args[&struct_id];
+
+            let mut offset = 0;
+            for (key, value) in map.iter() {
+                if key == &key_id {
+                    return Ok(offset);
+                }
+                offset += 1;
+            }
+        }
+
+        Err(format!{"Cannot find structure '{}' or key '{}'", struct_id, key_id}) 
     }
 
     // A helper method to move a literal value
@@ -1039,7 +1064,11 @@ impl Interpreter {
                 tree.parse_type == ParseType::ID {
             let pointer = self.eval_reference(tree)?;
             println!("Looking for literal at pointer {:?}", pointer);
-            return self.get_literal_in_memory(pointer);
+            let mut val = self.get_literal_in_memory(pointer.clone())?;
+            println!("$$$$$$$$$$$$$$$$$$$$$");
+            println!{"{:?}", val};
+            println!("$$$$$$$$$$$$$$$$$$$$$$");
+            return Ok(val);
         }
 
         // Catch function calls
@@ -1369,9 +1398,19 @@ impl Interpreter {
         Ok(())
     }
 
-    /// Todo Memory
     /// 
     fn eval_repeat(&mut self, tree: &ParseTree) -> Result<(), String> {
+        let repeat_lit = self.eval_resolvable(tree.children[0].as_ref().unwrap())?;
+        let repeat_val = repeat_lit.extract_number().unwrap_or(0.0) as i32;
+
+        println!{"REPEATING BLOCK {} TIMES", repeat_val};
+        for i in 0..repeat_val {
+            println!{"REPEAT LOOP {}", i};
+            self.env.scope_in();
+            self.eval_body(tree.children[1].as_ref().unwrap())?;
+            self.env.scope_out();
+        }
+
         Ok(())
     }
 
@@ -1415,10 +1454,28 @@ impl Interpreter {
     // Struct -> move address based on key
     fn eval_reference(&mut self, tree: &ParseTree) -> Result<Pointer, String> {
 
+        println!{"REFERENCE TREE"};
+        tree.print();
+
         let mut ptr: Pointer;
 
         if tree.parse_type != ParseType::ID {
             ptr = self.eval_reference(tree.children[0].as_ref().unwrap())?;
+
+            // Unwrap link pointers
+            match &ptr.pointer_type {
+                PointerType::LINK(p) => { 
+                    ptr = match self.env.get_value(ptr.clone())? {
+                        PrimitiveType::POINTER(ptr2) => *ptr2,
+                        _ => { return Err("Cannot get refernce from link".to_string()); }
+                    };
+                },
+                _ => (),
+            };
+
+            println!{"@@@@@@@@@@@@@@@@@@@@@@@@@@"};
+            println!{"{:?}", ptr};
+            println!{"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"};
 
             if tree.parse_type == ParseType::GETINDEX {
                 let (mut bounds, arr_type) = match ptr.pointer_type.clone(){
@@ -1490,9 +1547,54 @@ impl Interpreter {
             }
 
             else if tree.parse_type == ParseType::GETSTRUCT {
+                // Find the key name, and structure name
                 let struct_key = unwrap_id_tree(tree.children[1].as_ref().unwrap());
+                let struct_name = match &ptr.pointer_type {
+                    PointerType::STRUCTURE(s) => s.to_string(),
+                    _ => { return Err("Cannot key index a non-structure".to_string()); }
+                };
 
+                // If we came from a complicated pointer, check
+                //  and see if we actually need to move into the
+                //  structure from memory. This will move into
+                //  the structure if the address in memory is
+                //  also a structure of the same name.
+                // Note: this could cause problems if a structures
+                //  first element is that structure again
+                match &ptr.pointer_type {
+                    PointerType::STRUCTURE(_) => { 
+                        ptr = match self.env.get_value(ptr.clone())? {
+                            PrimitiveType::POINTER(ptr2) => {
+                                match &ptr2.pointer_type {
+                                    PointerType::STRUCTURE(s) => {
+                                        if s == &struct_name.clone() {
+                                            *ptr2
+                                        }
+                                        else {
+                                            ptr
+                                        }
+                                    },
+                                    _ => ptr
+                                }
+                            },
+                            _ => ptr,
+                        };
+                    },
+                    _ => (),
+                };
+
+                // Calculate the offset in memory
+                let offset = self.get_struct_key_offset(struct_name.clone(), struct_key.clone())?;
+
+                // Get the expected pointer type, and set the address to the proper one
+                let mut new_ptr = self.structure_defs[&struct_name][offset].clone();
+                new_ptr.address = ptr.address + offset;
+
+                println!{"````````````````````"};
+                println!{"{:?}", new_ptr};
+                println!{"````````````````````"};
                 
+                return Ok(new_ptr);
             }
         }
 
@@ -1503,12 +1605,13 @@ impl Interpreter {
     /// 
     fn eval_return(&mut self, tree: &ParseTree) -> Result<(), String> {
         self.return_value = LiteralValue::null();
-        self.loop_status = LoopStatus::RETURN;
-
+        
         // Check to see if the return type is nothing
         if tree.children[0].is_some() {
             self.return_value = self.eval_resolvable(tree.children[0].as_ref().unwrap())?;
         }
+
+        self.loop_status = LoopStatus::RETURN;
 
         // Otherwise return Ok
         Ok(())
