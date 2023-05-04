@@ -1,4 +1,43 @@
-// This will hold the BNF for the language
+############################
+#       SYNTAX NOTES       #
+############################
+
+To simplify our BNF, some special syntax will be used
+
+-= Parenthesis =-
+Parenthesis signify the leading token of the
+  child non-terminal, which has been used in the parser
+  to determine when to branch to different non-terminals
+
+EX: < optional_arg > ::= (id) < arg >
+                       | ''
+
+This signifies that if there is an ID token currently,
+ then < arg > should be called, otherwise this
+ non-terminal is expected to be empty ('')
+
+-= REGEX Notation =-
+Some sections of the BNF have been simplified into regex
+ notation. In this notation, we will wrap square brackets
+ '[]' around any terminals/non-terminals and follow them
+ with a regex character. The main regex characters are
+ '*' which means "zero or more"
+ '+' which means "one or more"
+ '?' which means "zero or one"
+
+ Ex: < args > ::= [< arg > COMMA]*
+ This means that "< args >" will have zero or many
+  "< arg >", that are each followed by a comma
+
+
+ -= Side Note =-
+ To avoid excessively long lines, some non-terminal branches
+  have been split into multiple lines. Watch the vertical
+  bars to know when a new branch is defined.
+
+############################
+#           BNF            #
+############################
 
 < CODE >                 ::= DEF < definitions > < program >
                            | < program >
@@ -12,35 +51,30 @@
 < structure-def >        ::= STRUCT ID < strucutre-arg > < structure-args > 
                              END STRUCT
 
-< structure-args >       ::= (id) < structure-arg > < structure-args >
+< structure-args >       ::= (ID) < structure-arg > < structure-args >
                            | ''
 
 < structure-arg >        ::= < variable-def >
 
-< global-defs >          ::= < global-def > < global-defs >
+< global-defs >          ::= (ID) < global-def > < global-defs >
                            | ''
 
 < global-def >           ::= < assign_or_var_def >
 
-< function-defs >        ::= (function) < function-def > < function-defs >
+< function-defs >        ::= (FUNCTION) < function-def > < function-defs >
                            | ''
 
 < function-def >         ::= FUN ID LPAREN < parameters > RPAREN 
                               RETURNS < fun-return-type > < fun-statements > 
                               END FUN
 
-< parameters >         ::= < parameter > < parameters' >
+< parameters >           ::= (ID) < parameter > < parameters' >
+                           | ''                         
 						   
-< parameters' >        ::= COMMA < parameters'' >
-						   | ''
-						   
-< parameters'' >		 ::= < parameter > < parameters' >
+< parameters' >        ::= COMMA < parameters >
 						   | ''
 
-< parameter >          ::= ID COLON < changeable > < fun-arg-type >
-
-< changeable >            ::= CHANGEABLE
-                           | ''
+< parameter >          ::= ID COLON [CHANGEABLE]? < fun-arg-type >
 
 < fun-arg-type >         ::= < basic-type >
                            | ARRAY < fun-arg-type' >
@@ -67,17 +101,22 @@
 < statements >           ::= < statement > < statements >
                            | ''
 
-< statement >            ::= (ID) < asg or var-def >
+< statement >            ::= (ID) < asg or var-def or res >
                            | (WHILE) < while >
                            | (IF) < if >
                            | (REPEAT) < repeat >
                            | (UNLINK) < unlink >
                            | QUIT
-                           | (*otherwise...) < resolvable >
+                           | < resolvable >
 						   
-< asg or var-def >		 ::= (ID) (EQ) < assignment >
-						   | (ID) (COLON) < variable-def >
-						   | (*otherwise...) < reference > < resolvable' >
+< asg or var-def or res >::= (ID) (COLON) < variable-def >
+                           | IDS COLON < variable-def >
+						   | < reference > EQ < assignment' >
+                           | < reference > < resolvable2 >
+
+< asg or var-def >       ::= (ID) (COLON) < variable-def >
+                           | IDS COLON < variable-def >
+						   | < reference > EQ < assignment' >
 
 < unlink >               ::= UNLINK < reference >
 
@@ -92,10 +131,7 @@
 
 < ids >                  ::= ID < ids' >
 						 
-< ids' >        		 ::= COMMA < ids'' >
-						   | ''
-						   
-< ids'' >		 		 ::= ID < ids' >
+< ids' >        		 ::= COMMA [< ids >]?
 						   | ''
 
 < var-def-equal >        ::= EQ < resolvable >
@@ -105,21 +141,17 @@
                            | ARRAY < type or bounds >
                            | LINK TO < basic-type >
 
-
 < type or bounds >       ::= OF < basic-type >
                            | LBRACKET < bounds > RBRACKET OF < basic-type >
 
 < basic-type >           ::= NUMBER
                            | TEXT
-                           | ID // for structures
+                           | ID     // for structures
 
 < bounds >               ::= < bound > < bounds' >
                            | ''
 						 
-< bounds' >        		 ::= COMMA < bounds'' >
-						   | ''
-						   
-< bounds'' >		 	 ::= < bound > < bounds' >
+< bounds' >        		 ::= COMMA < bounds >
 						   | ''
 
 < bound >                ::= < resolvable > < bound' >
@@ -132,7 +164,7 @@
 < assignment' >          ::= LINK TO < reference >
                            | < resolvable >
 
-< while >                ::= WHILE < condition > < loop-statements > END 'while'
+< while >                ::= WHILE < condition > < loop-statements > END WHILE
 
 < if >                   ::= IF < condition > THEN < loop-statements > < if2 >
 
@@ -178,6 +210,10 @@
 						   | WORDNOT LINKED
 
 < resolvable >           ::= < bit-orable >
+
+< resolvable' >          ::= < ref-or-call > < factor' > < term' > 
+                             < expression' > < bit-shiftable' > < bit-andable' > 
+                             < bit-xorable' > < bit-orable' >
 
 ====================================
 < bit-orable >           ::= < bit-xorable > < bit-orable' >
@@ -227,7 +263,7 @@
                            | LPAREN < resolvable > RPAREN
                            | NUMBER
                            | TEXT
-                           | ID < ref-or-call > //pass in id
+                           | ID < ref-or-call >
                            | (LCURLY) < struct-lit >
                            | (LBRACKET) < array-lit >
 
@@ -255,21 +291,14 @@
 < array-items >          ::= < resolvable > < array-items' >
                            | ''
 
-< array-items' >         ::= COMMA < array-items'' >
+< array-items' >         ::= COMMA < array-items >
                            | ''
-
-< array-items'' >        ::= < resolvable > < array-items' >
-                           | ''
-
-
 
 < reference >            ::= ID < reference' >
 
 < reference' >           ::= LBRACKET < index > RBRACKET < reference' >
                            | PERIOD ID < reference' >
 						   | ''
-
-
 
 < index >                ::= < resolvable > < index' >
                            | ''
@@ -278,13 +307,11 @@
 						   | ''
 
 < call >                 ::= ID LPAREN < call' >
-**************
+
 < call' >                ::= < arg-list > RPAREN
                            | RPAREN
-**************
+
 < arg-list >             ::= < resolvable > < arg-list' >
 
-< arg-list' >            ::= COMMA < arg-list'' >
+< arg-list' >            ::= COMMA [< arg-list >]?
                            | ''
-< arg-list'' >			 ::= < resolvable > < arg-list' >
-						   | ''

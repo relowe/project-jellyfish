@@ -662,7 +662,7 @@ impl Parser {
         }
 
         // < assignment >
-        id_tree = self.resolvable2(id_tree)?;
+        id_tree = self.reference2(id_tree)?;
         if self.has(&lexer::TokenType::EQ) {
             let mut parse_tree = ParseTree {
                 parse_type: ParseType::ASSIGN,
@@ -677,7 +677,7 @@ impl Parser {
 
         // < resolvable' >
         if go_to_resolvable {
-            Ok(id_tree)
+            self.resolvable2(id_tree)
         }
         else {
             self.must_be(&lexer::TokenType::INVALID);
@@ -807,7 +807,6 @@ impl Parser {
         self.comparable()
     }
 
-    // TODO
     fn comparable(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut left: Option<ParseTree> = Some( ParseTree {
             parse_type: ParseType::INVALID,
