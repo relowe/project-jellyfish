@@ -4,6 +4,8 @@ use std::{env, process};
 use crate::lexer;
 use std::mem;
 
+// This null token can be used as a token placeholder
+//  elsewhere througout the code
 static NULL_TOKEN: lexer::Token = lexer::Token {
     row: 0,
     col: 0,
@@ -11,14 +13,24 @@ static NULL_TOKEN: lexer::Token = lexer::Token {
     lexeme: None
 };
 
+// For the token types with values, we need a standard
+//  token with a value to compare to
 static ID_TYPE: lexer::TokenType = lexer::TokenType::ID(String::new());
 static TEXT_TYPE: lexer::TokenType = lexer::TokenType::TEXT(String::new());
 static NUMBER_TYPE: lexer::TokenType = lexer::TokenType::NUMBER(0.0);
 
+
+// Handle error reporting through web assembly
+// For right now we just print the error, but later
+//  on this would be passed to JavaScript code
 macro_rules! log {
     ($($t:tt)*) => (println!("{}",  &format_args!($ ( $t ) *).to_string() ))
 }
 
+// These types represents nodes in the parse tree
+// Each node is something some action that the
+//  interpreter will perform, or an object that
+//  the interpreter will work with.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParseType {
     CODE,       // the start of all trees
@@ -83,6 +95,8 @@ pub struct ParseTree {
 }
 
 impl ParseTree {
+    // A function to recursively print the entire parse
+    //  tree and its children.
     pub fn print(&self) {
         let len = self.children.len();
         let mut idx = 0;
@@ -112,6 +126,8 @@ impl ParseTree {
         }
     }
 
+    // A helper function to print the parse tree,
+    //  making sure all nodes are properly indented
     fn print_tabbed(&self, tab: usize) {
         let len = self.children.len();
         let mut idx = 0;
@@ -157,7 +173,6 @@ pub struct Parser {
 }
 
 impl Parser {
-
     // Construct a lexer for the parser from a String
     pub fn new(text: String) -> Result<Self, &'static str> {
         let lexer = lexer::Lexer::new(text)?;
@@ -195,12 +210,21 @@ impl Parser {
         self.lexer.curr_token.clone()
     }
 
+    // Return a boolean on if the current token matches
+    //  the expected token
     fn has(&self, token_type: &lexer::TokenType) -> bool {
-        // self.lexer.curr_token.token_type == token_type
+        /* self.lexer.curr_token.token_type == token_type */
+
+        // Need to use Rust's discriminant function to
+        //  analyze the token types that have values
+        //  associated with them
         mem::discriminant(&self.curr_token().token_type) == mem::discriminant(token_type)
     }
 
-    // need to make it kill program...
+    // Test if the current token matches the expected token
+    // If not, log the error and close the program
+    // For now, we just exit, but this can be handled
+    //  differently in WebAssembly
     fn must_be(&self, token_type: &lexer::TokenType) -> bool {
         if !self.has(token_type) {
             log!("Parse Error on Line: {}, Column: {}", self.curr_token().row, self.curr_token().col);
@@ -208,28 +232,30 @@ impl Parser {
             log!("Got: {:?}", self.curr_token().token_type);
             process::exit(0);
         }
-
         true
     }
 
-    // Helper function to call 'must_be' and 'next'
+    // Helper function to call 'must_be' and 'next' together
     fn eat(&mut self, token_type: &lexer::TokenType) -> Result<lexer::Token, &'static str> {
         self.must_be(token_type);
         self.next()
     }
 
+    // Run the parser
     pub fn parse(&mut self) -> Result<Option<ParseTree>, &'static str> {
         self.code()
     }
 
+    // < CODE >
     fn code(&mut self) -> Result<Option<ParseTree>, &'static str> {
         self.next()?;
         let mut parse_tree = ParseTree{
             parse_type: ParseType::CODE,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
+        // [DEF < definitions >]?
         if self.has(&lexer::TokenType::DEF) {
             self.next()?;
             parse_tree.children.push(self.definitions()?);
@@ -238,33 +264,40 @@ impl Parser {
             parse_tree.children.push(None);
         }
 
+        // < program >
         parse_tree.children.push(self.program()?);
 
         Ok(Some(parse_tree))
     }
 
+    // < definitions >
     fn definitions(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut parse_tree = ParseTree{
             parse_type: ParseType::DEFINITIONS,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
         // Will check for STRUCT token and return None if there isn't one
+        // < structure-defs >
         parse_tree.children.push(self.structure_defs()?);
 
         // Will check for ID token and return None if there isn't one
+        // < global-defs >
         parse_tree.children.push(self.global_defs()?);
 
         // Will check for FUN token and return None if there isn't one
+        // < function-defs >
         parse_tree.children.push(self.function_defs()?);
 
+        // END DEF
         self.eat(&lexer::TokenType::END)?;
         self.eat(&lexer::TokenType::DEF)?;
 
         Ok(Some(parse_tree))
     }
 
+    // < structure-defs >
     fn structure_defs(&mut self) -> Result<Option<ParseTree>, &'static str> {
         if !self.has(&lexer::TokenType::STRUCT) {
             return Ok(None);
@@ -272,10 +305,11 @@ impl Parser {
 
         let mut parse_tree = ParseTree{
             parse_type: ParseType::STRUCTDEFS,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
         
+        // [< structure-def >]*
         while self.has(&lexer::TokenType::STRUCT) {
             parse_tree.children.push(self.structure_def()?);
         }
@@ -283,26 +317,37 @@ impl Parser {
         Ok(Some(parse_tree))
     }
 
+    // < structure-def >
     fn structure_def(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut parse_tree = ParseTree{
             parse_type: ParseType::STRUCTDEF,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
+        // STRUCT
         self.eat(&lexer::TokenType::STRUCT)?;
 
+        // ID
         parse_tree.children.push(self.id()?);
 
+        // < structure-arg >
+        // Catch the requirement, but we don't process it here
+        self.must_be(&ID_TYPE);
+
+        // < structure-args >
         parse_tree.children.push(self.structure_args()?);
 
+        // END STRUCT
         self.eat(&lexer::TokenType::END)?;
         self.eat(&lexer::TokenType::STRUCT)?;
 
         Ok(Some(parse_tree))
     }
     
+    // ID
     fn id(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // ID
         self.must_be(&ID_TYPE);
 
         let parse_tree = ParseTree{
@@ -315,15 +360,15 @@ impl Parser {
         Ok(Some(parse_tree))
     }
 
+    // < structure-args >
     fn structure_args(&mut self) -> Result<Option<ParseTree>, &'static str> {   
         let mut parse_tree = ParseTree{
             parse_type: ParseType::STRUCTARGS,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
-        self.must_be(&ID_TYPE);
-
+        // [< structure-arg >]*
         while self.has(&ID_TYPE) {
             parse_tree.children.push(self.structure_arg()?);
         }
@@ -331,23 +376,30 @@ impl Parser {
         Ok(Some(parse_tree))
     }
 
+    // < structure-arg >
     fn structure_arg(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut parse_tree = ParseTree{
             parse_type: ParseType::STRUCTARG,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
+        // ID
         parse_tree.children.push(self.id()?);
 
+        // COLON
         self.eat(&lexer::TokenType::COLON)?;
 
+        // < variable-type >
         parse_tree.children.push(self.var_type()?);
 
-        // Optional return of literal
+        // < var-def-equal >
+        // But ran internally
+        // [EQ]?
         if self.has(&lexer::TokenType::EQ) {
             self.next()?;
 
+            // < resolvable >
             parse_tree.children.push(self.resolvable()?);
         }
         else {
@@ -357,6 +409,7 @@ impl Parser {
         Ok(Some(parse_tree))
     }
 
+    // < global-defs >
     fn global_defs(&mut self) -> Result<Option<ParseTree>, &'static str> {
         if !self.has(&ID_TYPE) {
             return Ok(None);
@@ -364,10 +417,15 @@ impl Parser {
         
         let mut parse_tree = ParseTree{
             parse_type: ParseType::GLOBALDEFS,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
+        // [< global-def >]*
+        // Here we use a boolean to signify if
+        //  assign_or_var_def should also look for
+        //  resolvable' at the end, this helps
+        //  to not repeat code
         while self.has(&ID_TYPE) {
             parse_tree.children.push(self.assign_or_var_def(false)?);
         }
@@ -377,23 +435,27 @@ impl Parser {
 
     // Returns either a singular ID tree, or an IDS tree
     fn ids(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // ID
         let id = self.id()?;
 
+        // This catches just the single ID
         if !self.has(&lexer::TokenType::COMMA) {
             return Ok(id);
         }
 
         let mut parse_tree = ParseTree{
             parse_type: ParseType::IDS,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
         parse_tree.children.push(id);
 
+        // < ids' >
         while self.has(&lexer::TokenType::COMMA) {
             self.next()?;
 
+            // ID
             if self.has(&ID_TYPE) {
                 parse_tree.children.push(self.id()?);
             }
@@ -405,6 +467,7 @@ impl Parser {
         Ok(Some(parse_tree))
     }
 
+    // < function-defs >
     fn function_defs(&mut self) -> Result<Option<ParseTree>, &'static str> {
         if !self.has(&lexer::TokenType::FUN) {
             return Ok(None);
@@ -412,10 +475,11 @@ impl Parser {
         
         let mut parse_tree = ParseTree{
             parse_type: ParseType::FUNDEFS,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
+        // [< function-def >]*
         while self.has(&lexer::TokenType::FUN) {
             parse_tree.children.push(self.function_def()?);
         }
@@ -423,41 +487,58 @@ impl Parser {
         Ok(Some(parse_tree))
     }
 
+    // < function-def >
     fn function_def(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // FUN
         self.eat(&lexer::TokenType::FUN)?;
 
         let mut parse_tree = ParseTree{
             parse_type: ParseType::FUNDEF,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
+        // ID
         parse_tree.children.push(self.id()?);
         
+        // LPAREN
         self.eat(&lexer::TokenType::LPAREN)?;
 
+        // < parameters >
         parse_tree.children.push(self.params()?);
 
+        // RPAREN RETURNS
         self.eat(&lexer::TokenType::RPAREN)?;
         self.eat(&lexer::TokenType::RETURNS)?;
 
+        // < fun-return-type >
         parse_tree.children.push(self.fun_return_type()?);
 
+        // We cheat having to double up on our BNF by
+        //  setting a flag for when we enter a function
+        //  definition
+        // Otherwise "RETURN" statements wouldn't be
+        //  caught properly
         self.in_fun_def = true;
+        // < fun-statements >
         parse_tree.children.push(self.statements()?);
         self.in_fun_def = false;
 
+        // ENF FUN
         self.eat(&lexer::TokenType::END)?;
         self.eat(&lexer::TokenType::FUN)?;
 
         Ok(Some(parse_tree))
     }
 
+    // < fun-return-type >
     fn fun_return_type(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // < basic-type >
         if !self.has(&lexer::TokenType::NOTHING) {
             return self.fun_arg_type();
         }
         
+        // NOTHING
         let parse_tree = ParseTree{
             parse_type: ParseType::TYPE,
             token: self.curr_token(),
@@ -469,13 +550,15 @@ impl Parser {
         Ok(Some(parse_tree))
     }
 
+    // < parameters >
     fn params(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut parse_tree = ParseTree{
             parse_type: ParseType::PARAMS,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
+        // [< parameter >]*
         while self.has(&ID_TYPE) {
             parse_tree.children.push(self.param()?);
 
@@ -490,21 +573,20 @@ impl Parser {
         Ok(Some(parse_tree))
     }
 
+    // < parameter >
     fn param(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut parse_tree = ParseTree{
             parse_type: ParseType::PARAM,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
+        // ID COLON
         parse_tree.children.push(self.id()?);
-
         self.eat(&lexer::TokenType::COLON)?;
 
+        // [CHANGEABLE]?
         let type_tree: Option<ParseTree>;
-
-
-        // Changable
         if self.has(&lexer::TokenType::CHANGEABLE) {
             let mut changeable_tree = ParseTree {
                 parse_type: ParseType::POINTER,
@@ -513,11 +595,12 @@ impl Parser {
             };
             self.next()?;
 
+            // < fun-arg-type >
             changeable_tree.children.push(self.fun_arg_type()?);
 
             type_tree = Some(changeable_tree);
         }
-        // Not changeable
+        // < fun-arg-type >
         else {
             type_tree = self.fun_arg_type()?;
         }
@@ -527,33 +610,43 @@ impl Parser {
         Ok(Some(parse_tree))
     }
 
+    // < program >
     fn program(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // PROGRAM
         self.eat(&lexer::TokenType::PROGRAM)?;
         
+        // < statements >
         let body = self.statements()?;
 
+        // END PROGRAM
         self.eat(&lexer::TokenType::END)?;
         self.eat(&lexer::TokenType::PROGRAM)?;
 
         Ok(body)
     }
 
+    // < statements >
     fn statements(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut parse_tree = ParseTree{
             parse_type: ParseType::BLOCK,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
+        // [< statement >]*
+        // Also catches when certain end conditions are reached
+        //  like the "END" of a loop, or if we hit EOF early
         while !(self.has(&lexer::TokenType::END) || 
               self.has(&lexer::TokenType::EOF)) {
             if self.in_if_block > 0 && self.has(&lexer::TokenType::ELSE) {
                 break;
             }
 
+            // < fun-statement > (for return specifically)
             if self.in_fun_def && self.has(&lexer::TokenType::RETURN) {
                 parse_tree.children.push(self.return_statement()?);
             }
+            // < loop-statements > (for BREAK)
             else if self.in_loop_block > 0 && self.has(&lexer::TokenType::BREAK) {
                 let break_tree = ParseTree {
                     parse_type: ParseType::BREAK,
@@ -563,6 +656,7 @@ impl Parser {
                 self.next()?;
                 parse_tree.children.push(Some(break_tree));
             }
+            // < loop-statements > (for CONTINUE)
             else if self.in_loop_block > 0 && self.has(&lexer::TokenType::CONTINUE) {
                 let continue_tree = ParseTree {
                     parse_type: ParseType::CONTINUE,
@@ -572,6 +666,7 @@ impl Parser {
                 self.next()?;
                 parse_tree.children.push(Some(continue_tree));
             }
+            // < statement >
             else {
                 parse_tree.children.push(self.statement()?);
             }
@@ -580,6 +675,8 @@ impl Parser {
         Ok(Some(parse_tree))
     }
 
+    // < statement >
+    // This just runs a match statement with the first token
     fn statement(&mut self) -> Result<Option<ParseTree>, &'static str> {
         match self.curr_token().token_type {
             lexer::TokenType::ID(_) => self.assign_or_var_def(true),
@@ -592,21 +689,24 @@ impl Parser {
         }
     }
 
+    // RETURN < return-value >
     fn return_statement(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut parse_tree = ParseTree{
             parse_type: ParseType::RETURN,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
+        // RETURN
         self.eat(&lexer::TokenType::RETURN)?;
 
-        // Return nothing, needs keyword nothing
+        // < return-value > ==> NOTHING
         if self.has(&lexer::TokenType::NOTHING) {
             self.next()?;
             parse_tree.children.push(None);
         }
-        // Returns a resolvable statement
+
+        // < return-value > ==> < resolvable >
         else {
             parse_tree.children.push(self.resolvable()?);
         }
@@ -614,6 +714,7 @@ impl Parser {
         Ok(Some(parse_tree))
     }
 
+    // < asg or var-def or res > and < asg or var-def >
     fn assign_or_var_def(&mut self, go_to_resolvable: bool) -> Result<Option<ParseTree>, &'static str> {
         let mut id_tree = self.ids()?;
 
@@ -622,7 +723,7 @@ impl Parser {
             self.eat(&lexer::TokenType::COLON)?;
             let mut parse_tree = ParseTree {
                 parse_type: ParseType::VARDEFS,
-                token: self.curr_token(), // replace w null
+                token: self.curr_token(), 
                 children: Vec::new(),
             };
             parse_tree.children.push(id_tree);
@@ -635,7 +736,7 @@ impl Parser {
         if self.has(&lexer::TokenType::COLON) {
             let mut parse_tree = ParseTree {
                 parse_type: ParseType::VARDEF,
-                token: self.curr_token(), // replace w null
+                token: self.curr_token(), 
                 children: Vec::new(),
             };
             self.next()?;
@@ -647,7 +748,7 @@ impl Parser {
             if self.has(&lexer::TokenType::EQ) {
                 let mut assign_tree = ParseTree {
                     parse_type: ParseType::ASSIGN,
-                    token: self.curr_token(), // replace w null
+                    token: self.curr_token(), 
                     children: Vec::new(),
                 };
                 self.next()?;
@@ -666,7 +767,7 @@ impl Parser {
         if self.has(&lexer::TokenType::EQ) {
             let mut parse_tree = ParseTree {
                 parse_type: ParseType::ASSIGN,
-                token: self.curr_token(), // replace w null
+                token: self.curr_token(), 
                 children: Vec::new(),
             };
             self.next()?;
@@ -685,59 +786,79 @@ impl Parser {
         }
     }
 
+    // < while >
     fn while_block(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // WHILE
         self.eat(&lexer::TokenType::WHILE)?;
         
         let mut parse_tree = ParseTree{
             parse_type: ParseType::WHILE,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
+        // < condition >
         parse_tree.children.push(self.condition()?);
 
+        // < loop-statements >
+        // Using a flag to mark when we are in a loop
+        //  helps reduce the BNF by not requireing
+        //  more special function for BREAK and CONTINUE
         self.in_loop_block += 1;
         parse_tree.children.push(self.statements()?);
         self.in_loop_block -= 1;
 
+        // END WHILE
         self.eat(&lexer::TokenType::END)?;
         self.eat(&lexer::TokenType::WHILE)?;
 
         Ok(Some(parse_tree))
     }
 
+    // < if >
     fn if_block(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // IF
         self.eat(&lexer::TokenType::IF)?;
         
         let mut parse_tree = ParseTree{
             parse_type: ParseType::IF,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
+        // < condition > THEN
         parse_tree.children.push(self.condition()?);
-        
         self.eat(&lexer::TokenType::THEN)?;
 
+        // < statements >
+        // Using a flag to mark when we are in an if
+        //  statement to make up for the < if2 elif >
+        //  non-terminal
         self.in_if_block += 1;
         parse_tree.children.push(self.statements()?);
         self.in_if_block -= 1;
 
+        // < if2 >
         parse_tree.children.push(self.if_block_2()?);
 
         Ok(Some(parse_tree))
     }
 
+    // < if2 > and < if2 elif > put together
     fn if_block_2(&mut self) -> Result<Option<ParseTree>, &'static str> {
         
+        // END IF
         if self.has(&lexer::TokenType::END) {
             self.eat(&lexer::TokenType::END)?;
             self.eat(&lexer::TokenType::IF)?;
             return Ok(None);
         }
 
+        // ELSE
         self.eat(&lexer::TokenType::ELSE)?;
 
+        // < if2 elif > is handled by < if >
+        //  thanks to the in_if_block flag
         if self.has(&lexer::TokenType::IF) {
             return self.if_block();
         }
@@ -745,14 +866,17 @@ impl Parser {
         // we don't need to set self.in_if_block here
         // because we shouldn't be seeing another else
         // if this is final else
+        // < statements >
         let else_block = self.statements()?;
 
+        // END IF
         self.eat(&lexer::TokenType::END)?;
         self.eat(&lexer::TokenType::IF)?;
 
         Ok(else_block)
     }
 
+    // < condition >
     fn condition(&mut self) -> Result<Option<ParseTree>, &'static str> {
         // < condition >
         let mut left = self.logic_andable()?;
@@ -774,7 +898,7 @@ impl Parser {
         Ok(left)
     }
 
-    // TODO
+    // < logic-andable >
     fn logic_andable(&mut self) -> Result<Option<ParseTree>, &'static str> {
         // < logic-paren >
         let mut left = self.logic_paren()?;
@@ -796,7 +920,9 @@ impl Parser {
         Ok(left)
     }
 
+    // < logic-paren >
     fn logic_paren(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // LPAREN < condition > RPAREN
         if self.has(&lexer::TokenType::LPAREN) {
             self.next()?;
             let condition_tree = self.condition();
@@ -804,13 +930,15 @@ impl Parser {
             return condition_tree;
         }
 
+        // < comparable >
         self.comparable()
     }
 
+    // < comparable >
     fn comparable(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut left: Option<ParseTree> = Some( ParseTree {
             parse_type: ParseType::INVALID,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new(),
         });
         
@@ -845,13 +973,14 @@ impl Parser {
                 }
             }
             else {
+                // < resolvable >
                 left = self.resolvable2(id_tree)?;
             }
         }
 
         let mut parse_tree: ParseTree = ParseTree {
             parse_type: ParseType::INVALID,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new(),
         };
 
@@ -875,89 +1004,107 @@ impl Parser {
         Ok(Some(parse_tree))
     }
 
+    // < repeat >
     fn repeat(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // REPEAT
         self.eat(&lexer::TokenType::REPEAT)?;
 
         let mut parse_tree;
         
-        // repeat forever
+        // FOREVER
         if self.has(&lexer::TokenType::FOREVER) {
             self.eat(&lexer::TokenType::FOREVER)?;
 
             parse_tree = ParseTree {
                 parse_type: ParseType::REPEATFOREVER,
-                token: self.curr_token(), // replace w null
+                token: self.curr_token(), 
                 children: Vec::new(),
             };
         }
 
-        // repeat for each
+        // FOR ALL ID IN < resolvable >
         else if self.has(&lexer::TokenType::FOR) {
             self.eat(&lexer::TokenType::FOR)?;
             self.eat(&lexer::TokenType::ALL)?;
 
             parse_tree = ParseTree {
                 parse_type: ParseType::REPEATFOR,
-                token: self.curr_token(), // replace w null
+                token: self.curr_token(), 
                 children: Vec::new(),
             };
 
+            // ID
             parse_tree.children.push(self.id()?);
 
+            // IN
             self.eat(&lexer::TokenType::IN)?;
 
+            // < resolvable >
             parse_tree.children.push(self.resolvable()?);
         }
 
-        // repeat n times
+        // < resolvable > TIMES
         else {
             parse_tree = ParseTree {
                 parse_type: ParseType::REPEAT,
-                token: self.curr_token(), // replace w null
+                token: self.curr_token(), 
                 children: Vec::new(),
             };
 
+            // < resolvable >
             parse_tree.children.push(self.resolvable()?);
 
+            // TIMES
             self.eat(&lexer::TokenType::TIMES)?;
         }
 
+        // < loop-statements >
+        // Using a flag to mark when we are in a loop
+        //  helps reduce the BNF by not requireing
+        //  more special function for BREAK and CONTINUE
         self.in_loop_block += 1;
         parse_tree.children.push(self.statements()?);
         self.in_loop_block -= 1;
 
+        // END REPEAT
         self.eat(&lexer::TokenType::END)?;
         self.eat(&lexer::TokenType::REPEAT)?;
 
         Ok(Some(parse_tree))
     }
 
+    // < unlink >
     fn unlink(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // UNLINK
         self.eat(&lexer::TokenType::UNLINK)?;
 
         let mut parse_tree = ParseTree{
             parse_type: ParseType::UNLINK,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
+        // < reference >
         parse_tree.children.push(self.reference()?);
 
         Ok(Some(parse_tree))
     }
 
+    // QUIT
     fn quit(&mut self) -> Result<Option<ParseTree>, &'static str> {
+        // QUIT
         self.eat(&lexer::TokenType::QUIT)?;
 
         let parse_tree = ParseTree{
             parse_type: ParseType::QUIT,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
         Ok(Some(parse_tree))
     }
 
+    
     fn reference(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let id_tree = self.id()?;
         self.reference2(id_tree)
@@ -967,7 +1114,7 @@ impl Parser {
         if self.has(&lexer::TokenType::LBRACKET) {
             let mut parse_tree = ParseTree {
                 parse_type: ParseType::GETINDEX,
-                token: self.curr_token(), // replace w null
+                token: self.curr_token(), 
                 children: Vec::new(),
             };
             self.next()?;
@@ -980,7 +1127,7 @@ impl Parser {
         else if self.has(&lexer::TokenType::PERIOD) {
             let mut parse_tree = ParseTree {
                 parse_type: ParseType::GETSTRUCT,
-                token: self.curr_token(), // replace w null
+                token: self.curr_token(), 
                 children: Vec::new(),
             };
             self.next()?;
@@ -1128,7 +1275,7 @@ impl Parser {
 
         let mut parse_tree = ParseTree {
             parse_type: ParseType::ARGS,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new(),
         };
 
@@ -1378,7 +1525,7 @@ impl Parser {
         if self.has(&lexer::TokenType::LPAREN) {
             let mut parse_tree = ParseTree {
                 parse_type: ParseType::CALL,
-                token: self.curr_token(), // replace w null
+                token: self.curr_token(), 
                 children: Vec::new(),
             };
             parse_tree.children.push(id_tree);
@@ -1396,7 +1543,7 @@ impl Parser {
     fn array_lit(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut parse_tree = ParseTree{
             parse_type: ParseType::ARRAYLIT,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
@@ -1421,7 +1568,7 @@ impl Parser {
     fn struct_lit(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut parse_tree = ParseTree{
             parse_type: ParseType::STRUCTLIT,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
@@ -1583,7 +1730,7 @@ impl Parser {
 
         let mut parse_tree = ParseTree {
             parse_type: ParseType::BOUNDS,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new(),
         };
 
@@ -1606,7 +1753,7 @@ impl Parser {
     fn bound(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let mut parse_tree = ParseTree{
             parse_type: ParseType::BOUND,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 
@@ -1629,7 +1776,7 @@ impl Parser {
     fn foo(&mut self) -> Result<Option<ParseTree>, &'static str> {
         let parse_tree = ParseTree{
             parse_type: ParseType::QUIT,
-            token: self.curr_token(), // replace w null
+            token: self.curr_token(), 
             children: Vec::new()
         };
 

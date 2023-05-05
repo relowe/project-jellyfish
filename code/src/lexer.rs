@@ -4,6 +4,10 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 
+// This is a collection of all of the
+//  token types, some types like
+//  TEXT and NUMBER also have added
+//  data for their values
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenType {
     TEXT(String),
@@ -70,8 +74,8 @@ pub enum TokenType {
     LCURLY,    // {
     RCURLY,    // }
     PERIOD,    // .
-    EOF, // end of file
-    INVALID,
+    EOF,       // end of file
+    INVALID,   // dummy value for broken tokens
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -103,7 +107,7 @@ impl Lexer {
             curr_col: 0,
             curr_lex: "".to_string(),
             curr_char: '\0',
-            // the initial token will be an invalid token
+            // The initial token will be an invalid token
             curr_token: Token{
                 token_type: TokenType::INVALID,
                 lexeme: None,
@@ -206,6 +210,7 @@ impl Lexer {
     }
 
     // Attempt to create a token for single character tokens
+    // This is done with a large match statement
     pub fn lex_single(&mut self) -> Result<bool, &'static str> {
 
         let t_type : TokenType = match self.curr_char {
@@ -337,10 +342,6 @@ impl Lexer {
     pub fn lex_id(&mut self) -> Result<bool, &'static str> {
         let start_row = self.curr_row;
         let start_col = self.curr_col;
-        if self.curr_char.is_alphabetic() {
-            self.curr_lex.push(self.curr_char);
-            self.consume()?;
-        }
         while self.curr_char.is_alphanumeric() || self.curr_char == '_' {
             self.curr_lex.push(self.curr_char);
             self.consume()?;
@@ -407,6 +408,7 @@ impl Lexer {
         self.consume()?;
 
         while self.curr_char != end_char && self.curr_char != '\0' {
+            // Clean and catch escape characters
             if self.curr_char == '\\' {
                 self.consume()?;
 
@@ -427,7 +429,6 @@ impl Lexer {
                 if escape_char == cleaned_char && cleaned_char != '\\' {
                     self.curr_lex.push('\\');
                 }
-
                 self.curr_lex.push(escape_char);
             }
             else {
@@ -500,6 +501,9 @@ impl Lexer {
     }
 }
 
+// Generic main function that just runs the lexer and prints
+//  the output. If a filename is provided in the system
+//  arguments, lex from that file instead.
 pub fn main() {
     let args: Vec<String> = env::args().collect();
 

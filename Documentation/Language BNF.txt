@@ -39,8 +39,7 @@ Some sections of the BNF have been simplified into regex
 #           BNF            #
 ############################
 
-< CODE >                 ::= DEF < definitions > < program >
-                           | < program >
+< CODE >                 ::= [DEF < definitions >]? < program >
 
 < definitions >          ::= < structure-defs > < global-defs > < function-defs > 
                              END DEF
@@ -54,7 +53,7 @@ Some sections of the BNF have been simplified into regex
 < structure-args >       ::= (ID) < structure-arg > < structure-args >
                            | ''
 
-< structure-arg >        ::= < variable-def >
+< structure-arg >        ::= ID COLON < variable-type > < var-def-equal >
 
 < global-defs >          ::= (ID) < global-def > < global-defs >
                            | ''
@@ -111,12 +110,12 @@ Some sections of the BNF have been simplified into regex
 						   
 < asg or var-def or res >::= (ID) (COLON) < variable-def >
                            | IDS COLON < variable-def >
-						   | < reference > EQ < assignment' >
+						               | < reference > EQ < assignment' >
                            | < reference > < resolvable2 >
 
 < asg or var-def >       ::= (ID) (COLON) < variable-def >
                            | IDS COLON < variable-def >
-						   | < reference > EQ < assignment' >
+						               | < reference > EQ < assignment' >
 
 < unlink >               ::= UNLINK < reference >
 
@@ -131,8 +130,8 @@ Some sections of the BNF have been simplified into regex
 
 < ids >                  ::= ID < ids' >
 						 
-< ids' >        		 ::= COMMA [< ids >]?
-						   | ''
+< ids' >        		     ::= COMMA [< ids >]?
+						               | ''
 
 < var-def-equal >        ::= EQ < resolvable >
                            | ''
@@ -166,18 +165,18 @@ Some sections of the BNF have been simplified into regex
 
 < while >                ::= WHILE < condition > < loop-statements > END WHILE
 
-< if >                   ::= IF < condition > THEN < loop-statements > < if2 >
+< if >                   ::= IF < condition > THEN < statements > < if2 >
 
 < if2 >                  ::= END IF
                            | ELSE < if2 elif >
 
-< if2 elif >			 ::= (IF) < if >
-						   | < loop-statements > END IF
+< if2 elif >		      	 ::= (IF) < if >
+						               | < statements > END IF
 
 < repeat >               ::= REPEAT < repeat' >
 
 < repeat' >              ::= FOREVER < loop-statements > END REPEAT
-                           | NUMBER TIMES < loop-statements > END REPEAT
+                           | < resolvable > TIMES < loop-statements > END REPEAT
                            | FOR ALL ID IN < resolvable > < loop-statements > END REPEAT
 
 < condition >            ::= < logic-andable > < condition' >

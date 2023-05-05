@@ -4,7 +4,7 @@
 
 1 - This langugage is STRONGLY typed
     * The only two types are NUMBER (float) and TEXT 
-    * There is also the "nothing" type
+    * There is also the "nothing" type (kind of)
 
 2 - This langugage has NO OBJECTS (at least for now)
 

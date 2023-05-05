@@ -8,5 +8,6 @@ definitions
 end definitions
 
 program
-    print(fib(10))
+    _a: text = "Hi"
+    print("Hello\ nWorld!", _a)
 end program
