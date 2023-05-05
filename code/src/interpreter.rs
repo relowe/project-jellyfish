@@ -1388,8 +1388,58 @@ impl Interpreter {
 
     /// Todo
     /// 
-    fn eval_repeat_for(&mut self, _tree: &ParseTree) -> Result<(), String> {
+    fn eval_repeat_for(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Get the pointer type of thing to loop over
+        let arr_ptr = self.eval_reference(tree.children[1].as_ref().unwrap())?;
         
+        // Remove the first layer of the array
+        let mut loop_ptr = match arr_ptr.pointer_type {
+            PointerType::ARRAY(bounds, arr_type) => {
+                // Figure out the new size by dividing by the first bounds length
+                let new_size = arr_ptr.size / (((bounds[0].0 - bounds[0].1).abs() + 1) as usize);
+                // Remove the first bounds to get the new bounds
+                let new_bounds = bounds.clone().into_iter().skip(1).collect();
+                Pointer{
+                    pointer_type: PointerType::ARRAY(new_bounds, arr_type.clone()),
+                    size: new_size,
+                    address: 0
+                }
+            },
+            _ => return Err("Cannot loop through a non-array!".to_string())
+        };
+
+        // Get the value of the thing to loop over
+        let val = self.eval_resolvable(tree.children[1].as_ref().unwrap())?;
+
+        // Get the name of the looping variable
+        let id = unwrap_id_tree(tree.children[0].as_ref().unwrap());
+
+        // Start looping through each object
+        for child in val.values.unwrap() {
+            println!{"CHILD:: {:?}", child};
+            // Scope in
+            self.env.scope_in();
+
+            // Load in the new value
+            loop_ptr.address = self.env.alloc(loop_ptr.size);
+            self.env.insert_id(id.clone(), loop_ptr.clone());
+            self.set_literal_in_memory(loop_ptr.clone(), child);
+
+            // Run the body
+            self.eval_body(tree.children[2].as_ref().unwrap())?;
+            // Scope out
+            self.env.scope_out();
+
+            // Handle break conditions
+            if self.loop_status == LoopStatus::CONTINUE {
+                self.loop_status = LoopStatus::DEFAULT;
+            }
+            else if self.loop_status == LoopStatus::BREAK {
+                self.loop_status = LoopStatus::DEFAULT;
+                break;
+            }
+        }
+
         Ok(())
     }
 
@@ -1397,7 +1447,6 @@ impl Interpreter {
     fn eval_repeat_forever(&mut self, tree: &ParseTree) -> Result<(), String> {
         
         loop {
-            println!{"REPEATING"};
             self.env.scope_in();
             self.eval_body(tree.children[0].as_ref().unwrap())?;
             self.env.scope_out();
