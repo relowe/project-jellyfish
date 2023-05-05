@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::{env, process};
 use crate::lexer::{TokenType};
 use crate::parser::{Parser, ParseTree, ParseType};
@@ -27,16 +25,6 @@ pub struct Pointer {
     address: usize,
     size: usize,
     pointer_type: PointerType,
-}
-
-impl Pointer {
-    fn null() -> Self {
-        Pointer{
-            address: 0,
-            size: 0,
-            pointer_type: PointerType::PRIMITIVE,
-        }
-    }
 }
 
 // a memory address and size, used by the heap
@@ -74,7 +62,7 @@ pub struct Environment {
     heap: BinaryHeap<MemorySpace>,
     // linked_values stores how many times a variable has been linked
     // this is used when deallocing to ensure we don't delete expected values
-    linked_values: HashMap<usize, i32>,
+    _linked_values: HashMap<usize, i32>,
 }
 
 
@@ -86,7 +74,7 @@ impl Environment {
             namespace: Vec::new(),
             memory: Vec::new(),
             heap: BinaryHeap::new(),
-            linked_values: HashMap::new(),
+            _linked_values: HashMap::new(),
         };
 
         // Fill in the first namespace with a hashmap
@@ -109,7 +97,7 @@ impl Environment {
         if mem_peek.is_none() || mem_peek.unwrap().size < size {
             let addr:usize = self.memory.len();
 
-            for i in 0..size {
+            for _ in 0..size {
                 self.memory.push(PrimitiveType::INITIALIZED);
             }
 
@@ -151,7 +139,7 @@ impl Environment {
                 match val {
                     Ok(PrimitiveType::POINTER(p)) => {
                         match p.pointer_type {
-                            PointerType::LINK(p2) => (), // TODO
+                            PointerType::LINK(_p2) => (), // TODO
                             _ => self.dealloc(*p),
                         };
                         self.memory[pointer.address] = PrimitiveType::NOTHING
@@ -201,20 +189,6 @@ impl Environment {
         Err(format!{"Could not find id '{}' in the namespace", id})
     }
 
-    // Set the pointer for a given ID
-    // If the ID does not exist, error
-    fn set_id(&mut self, id: String, pointer: Pointer) -> Result<(), String> {
-        println!{"Setting id {} to {:?}", id, pointer};
-        for i in (0..self.namespace.len()).rev() {
-            if self.namespace[i].contains_key(&id) {
-                self.namespace[i].insert(id, pointer.clone());
-                return Ok(());
-            }
-        }
-
-        Err(format!{"Could not find id '{}' in the namespace", id})
-    }
-
     // Insert a new ID with a pointer value
     // If the ID exists (in the current namespace)
     fn insert_id(&mut self, id: String, pointer: Pointer) -> Result<(), String> {
@@ -256,7 +230,7 @@ impl Environment {
             }
             if !seen {            
                 match &ptr.pointer_type {
-                    PointerType::LINK(p) => {
+                    PointerType::LINK(_) => {
                         self.memory[ptr.address] = PrimitiveType::NOTHING;
                     }
                     _ => {
@@ -444,14 +418,6 @@ pub fn unwrap_type_tree(tree: &ParseTree) -> String {
     }
 }
 
-pub fn unwrap_lit_tree(tree: &ParseTree) -> String {
-    match &tree.token.token_type {
-        TokenType::NUMBER(_x) => "number".to_string(),
-        TokenType::TEXT(_x) => "text".to_string(),
-        _ => "invalid".to_string(),
-    }
-}
-
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum PrimitiveType {
@@ -483,7 +449,6 @@ pub enum LoopStatus {
 
 #[derive(Debug, Clone)]
 struct InterpreterFunctionObj {
-    name: String,
     param_names: Vec<String>,
     param_pointers: Vec<Pointer>,
     body: ParseTree
@@ -529,7 +494,7 @@ impl Interpreter {
             let map = &self.symbol_table.struct_args[&struct_id];
 
             let mut offset = 0;
-            for (key, value) in map.iter() {
+            for (key, _value) in map.iter() {
                 if key == &key_id {
                     return Ok(offset);
                 }
@@ -624,13 +589,13 @@ impl Interpreter {
 
                             // Set the value and recurse to fill it
                             self.env.set_value(ptr.clone(), PrimitiveType::POINTER(Box::new(struct_ptr.clone())));
-                            self.set_literal_in_memory(struct_ptr.clone(), val.clone());
+                            self.set_literal_in_memory(struct_ptr.clone(), val.clone())?;
                         }
                         else {
                             // This means we have a strucure already there, so we
                             //  can pull the current pointer and recurse
                             match at_addr {
-                                PrimitiveType::POINTER(p) => self.set_literal_in_memory(*p.clone(), val.clone()),
+                                PrimitiveType::POINTER(p) => self.set_literal_in_memory(*p.clone(), val.clone())?,
                                 _ => return Err("Cannot reference structure pointer in memory".to_string()),
                             };
                             
@@ -655,14 +620,14 @@ impl Interpreter {
 
 
                 // Loop through each child setting its value appropriately
-                let mut struct_ptrs = self.structure_defs.get(&name).expect("Could not load strucutre arguments").clone();
+                let struct_ptrs = self.structure_defs.get(&name).expect("Could not load strucutre arguments").clone();
                 for (struct_ptr, val) in struct_ptrs.iter().zip(lit.values.unwrap().iter()) {
                     // If this is a primitive value, get the details and set it
                     // Also increment the memory pointer
                     if struct_ptr.pointer_type == PointerType::PRIMITIVE {
                         ptr.pointer_type = struct_ptr.pointer_type.clone();
                         ptr.size = struct_ptr.size;
-                        self.set_literal_in_memory(ptr.clone(), val.clone());
+                        self.set_literal_in_memory(ptr.clone(), val.clone())?;
                     }
                     else {
                         // Check if a pointer already exists
@@ -683,7 +648,7 @@ impl Interpreter {
                         }
                         else {
                             match at_addr {
-                                PrimitiveType::POINTER(p) => self.set_literal_in_memory(*p.clone(), val.clone()),
+                                PrimitiveType::POINTER(p) => self.set_literal_in_memory(*p.clone(), val.clone())?,
                                 _ => return Err("Cannot reference structure pointer in memory".to_string()),
                             };
                         }
@@ -741,7 +706,7 @@ impl Interpreter {
                 // (We need this info to undo the serialization)
                 let mut pointer_type = *arr_pointer_type.clone();
                 let mut offset_scale = 1;
-                let mut num_elements = (bounds[0].0 - bounds[0].1).abs() + 1;
+                let num_elements = (bounds[0].0 - bounds[0].1).abs() + 1;
                 if bounds.len() > 1 {
                     let mut new_bounds: Vec<(i32, i32)> = Vec::new();
                     for i in 1..bounds.len() {
@@ -764,7 +729,7 @@ impl Interpreter {
                 // Create the literal type and recursively add all children
                 let mut lit_vec: Vec<LiteralValue> = Vec::new();
                 
-                for i in 0..num_elements {
+                for _ in 0..num_elements {
                     lit_vec.push(self.get_literal_in_memory(ptr.clone())?);
                     ptr.address += offset_scale as usize;
                 }
@@ -794,7 +759,7 @@ impl Interpreter {
                     address: pointer.address.clone(),
                 };
 
-                let mut struct_ptrs = self.structure_defs.get(&name).expect("Could not load strucutre arguments").clone();
+                let struct_ptrs = self.structure_defs.get(&name).expect("Could not load strucutre arguments").clone();
                 for struct_ptr in struct_ptrs.iter() {
                     // If this is a primitive value, just pull its value
                     if struct_ptr.pointer_type == PointerType::PRIMITIVE {
@@ -834,8 +799,6 @@ impl Interpreter {
                 });
             }
         }
-
-        Ok(LiteralValue::null())
     }
 
     pub fn eval(&mut self, tree: &ParseTree) -> Result<(), String> {
@@ -921,7 +884,6 @@ impl Interpreter {
             }
 
             let fn_obj = InterpreterFunctionObj {
-                name: function_id.clone(),
                 param_names: param_names,
                 param_pointers: param_pointers,
                 body: fun_def.children[3].as_ref().unwrap().clone(),
@@ -1064,7 +1026,7 @@ impl Interpreter {
                 tree.parse_type == ParseType::ID {
             let pointer = self.eval_reference(tree)?;
             println!("Looking for literal at pointer {:?}", pointer);
-            let mut val = self.get_literal_in_memory(pointer.clone())?;
+            let val = self.get_literal_in_memory(pointer.clone())?;
             println!("$$$$$$$$$$$$$$$$$$$$$");
             println!{"{:?}", val};
             println!("$$$$$$$$$$$$$$$$$$$$$$");
@@ -1111,7 +1073,7 @@ impl Interpreter {
                 self.env.insert_id(name.clone(), p.clone())?;
 
                 match &p.pointer_type {
-                    PointerType::LINK(link_ptr) => {
+                    PointerType::LINK(_) => {
                         let ptr_box = Box::new(self.eval_reference(tree.children[1].as_ref().unwrap().children[i].as_ref().unwrap())?);
                         self.env.set_value(p.clone(), PrimitiveType::POINTER(ptr_box));
                     },
@@ -1216,7 +1178,7 @@ impl Interpreter {
 
             println!{"Adding symbol {}", id};
             pointer.address = self.env.alloc(pointer.size.clone());
-            self.env.insert_id(id, pointer.clone());
+            self.env.insert_id(id, pointer.clone())?;
         }
         // IDS
         else {
@@ -1225,7 +1187,7 @@ impl Interpreter {
 
                 println!{"Adding symbol {}", id};            
                 pointer.address = self.env.alloc(pointer.size.clone());
-                self.env.insert_id(id, pointer.clone());
+                self.env.insert_id(id, pointer.clone())?;
             }
         }
 
@@ -1366,13 +1328,13 @@ impl Interpreter {
 
     /// Todo
     /// 
-    fn eval_link(&mut self, tree: &ParseTree) -> Result<(), String> {
+    fn eval_link(&mut self, _tree: &ParseTree) -> Result<(), String> {
         Ok(())
     }
 
     /// Todo
     /// 
-    fn eval_unlink(&mut self, tree: &ParseTree) -> Result<(), String> {
+    fn eval_unlink(&mut self, _tree: &ParseTree) -> Result<(), String> {
         Ok(())
     }
 
@@ -1426,7 +1388,7 @@ impl Interpreter {
 
     /// Todo
     /// 
-    fn eval_repeat_for(&mut self, tree: &ParseTree) -> Result<(), String> {
+    fn eval_repeat_for(&mut self, _tree: &ParseTree) -> Result<(), String> {
         
         Ok(())
     }
@@ -1434,7 +1396,7 @@ impl Interpreter {
     /// 
     fn eval_repeat_forever(&mut self, tree: &ParseTree) -> Result<(), String> {
         
-        while true {
+        loop {
             println!{"REPEATING"};
             self.env.scope_in();
             self.eval_body(tree.children[0].as_ref().unwrap())?;
@@ -1489,7 +1451,7 @@ impl Interpreter {
 
             // Unwrap link pointers
             match &ptr.pointer_type {
-                PointerType::LINK(p) => { 
+                PointerType::LINK(_) => { 
                     ptr = match self.env.get_value(ptr.clone())? {
                         PrimitiveType::POINTER(ptr2) => *ptr2,
                         _ => { return Err("Cannot get refernce from link".to_string()); }
@@ -1530,7 +1492,7 @@ impl Interpreter {
                         }
 
                         // remove this dimension
-                        bounds = bounds.into_iter().rev().skip(1).rev().collect();
+                        bounds = bounds.into_iter().skip(1).collect();   
                         // move the address
                         ptr.address += (offset * (idx_val as i32 - bound.0)) as usize;
                         // change the remaining offset
@@ -1543,7 +1505,7 @@ impl Interpreter {
                         }
 
                         // remove this dimension
-                        bounds = bounds.into_iter().rev().skip(1).rev().collect();
+                        bounds = bounds.into_iter().skip(1).collect();
                         // move the address
                         ptr.address += (offset * (bound.0 - idx_val as i32)) as usize;
                         // change the remaining offset
@@ -1640,17 +1602,16 @@ impl Interpreter {
         Ok(())
     }
 
-    fn eval_quit(&mut self, tree: &ParseTree) -> Result<(), String> {
+    fn eval_quit(&mut self, _tree: &ParseTree) -> Result<(), String> {
         process::exit(0);
-        Ok(())
     }
 
-    fn eval_continue(&mut self, tree: &ParseTree) -> Result<(), String> {
+    fn eval_continue(&mut self, _tree: &ParseTree) -> Result<(), String> {
         self.loop_status = LoopStatus::CONTINUE;
         Ok(())
     }
 
-    fn eval_break(&mut self, tree: &ParseTree) -> Result<(), String> {
+    fn eval_break(&mut self, _tree: &ParseTree) -> Result<(), String> {
         self.loop_status = LoopStatus::BREAK;
         Ok(())
     }  
