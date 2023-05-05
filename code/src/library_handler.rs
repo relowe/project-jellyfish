@@ -2,6 +2,30 @@ use crate::semantic_analyzer::{SymbolType, FunctionObject};
 use crate::interpreter::{LiteralValue};
 use std::collections::HashMap;
 
+// A boolean to determine if debug information should be displayed
+static DEBUG: bool = false;
+
+// Handle error reporting through web assembly
+// For right now we just print the error, but later
+//  on this would be passed to JavaScript code
+macro_rules! log {
+    ($($t:tt)*) => (print!("{}",  &format_args!($ ( $t ) *).to_string() ))
+}
+macro_rules! logln {
+    ($($t:tt)*) => (println!("{}",  &format_args!($ ( $t ) *).to_string() ))
+}
+
+// Handle debugging through web assembly
+// For right now we just print the error, but later
+//  on this would be passed to JavaScript code
+macro_rules! debug {
+    ($($t:tt)*) => {
+        if DEBUG {
+            (println!("LIB: {}",  &format_args!($ ( $t ) *).to_string() ))
+        }
+    }
+}
+
 // Collect and return a list of all external functions
 pub fn get_external_functions() -> HashMap<String, FunctionObject> {
     let mut map: HashMap<String, FunctionObject> = HashMap::new();
@@ -34,14 +58,13 @@ pub fn get_external_functions() -> HashMap<String, FunctionObject> {
 
 // Actually handle a function call
 pub fn handle_call(name: String, vals: Vec<LiteralValue>) -> Result<LiteralValue, String> {
-    println!{"Attempting to call external function {}", name};
+    debug!{"Attempting to call external function {}", name};
     match name.as_str() {
         "print" | "display" => {
-            print!{">> "};
             for val in vals {
-                print!{"{}", val.to_string()};
+                log!{"{}", val.to_string()};
             }
-            println!{};
+            logln!{""};
             return Ok(LiteralValue::null());
         },
 

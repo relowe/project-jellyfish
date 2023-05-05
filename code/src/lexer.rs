@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::env;
 use std::fs::File;
 use std::io::Read;
@@ -100,7 +98,7 @@ impl Lexer {
     // Create a new lexer structure from a provided code String
     // This function also loads in the first character into the
     //  'curr_char' buffer for processing
-    pub fn new(text: String) -> Result<Self, &'static str> {
+    pub fn new(text: String) -> Result<Self, String> {
         let mut lex = Lexer {
             raw_text: text.chars().rev().collect::<String>(),
             curr_row: 1,
@@ -122,22 +120,22 @@ impl Lexer {
     // Try to load a string into the lexer from a file
     // This acts as an alternative to 'new', since it creates
     //  its own lexer structure and returns that
-    pub fn from_file(file: String) -> Result<Self, &'static str> {
-        let result = File::open(file);
+    pub fn from_file(file: String) -> Result<Self, String> {
+        let result = File::open(file.clone());
         if result.is_err() {
-            return Err("Could not open file");
+            return Err(format!{"Could not open file '{}'", file});
         }
         let mut file_obj = result.unwrap();
         let mut code: String = String::new();
         if file_obj.read_to_string(&mut code).is_err() {
-            return Err("Could not read from file");
+            return Err(format!{"Could not read from file '{}'", file});
         }
         Lexer::new(code)
     }
 
     // Consumes a single character from the lexer's raw text
     // Throws an error if non-ASCII characters are consumed
-    pub fn consume(&mut self) -> Result<char, &'static str> {
+    pub fn consume(&mut self) -> Result<char, String> {
         if self.raw_text.len() < 1 {
             self.curr_char = '\0';
             return Ok(self.curr_char);
@@ -150,7 +148,7 @@ impl Lexer {
             self.curr_row += 1;
         }
         if !self.curr_char.is_ascii() {
-            return Err("Only printable ASCII characters are allowed");
+            return Err("Only printable ASCII characters are allowed".to_string());
         }
         Ok(self.curr_char)
     }
@@ -158,7 +156,7 @@ impl Lexer {
     // Consume all whitespace characters, if the current character
     //  is not whitespace, or is EOF, this does nothing
     // Will consume all trailing whitespace until EOF
-    pub fn consume_whitespace(&mut self) -> Result<(), &'static str> {
+    pub fn consume_whitespace(&mut self) -> Result<(), String> {
         while self.curr_char.is_whitespace() || self.curr_char == '#' {
             if self.curr_char == '\0' {
                 return Ok(());
@@ -176,7 +174,7 @@ impl Lexer {
     // Consume and create the next token, store it in curr_token,
     //  and return it. If EOF token is already created, return
     //  it instead, without lexing any further.
-    pub fn next(&mut self) -> Result<Token, &'static str> {
+    pub fn next(&mut self) -> Result<Token, String> {
         if self.curr_token.token_type == TokenType::EOF {
             return Ok(self.curr_token.clone());
         }
@@ -211,7 +209,7 @@ impl Lexer {
 
     // Attempt to create a token for single character tokens
     // This is done with a large match statement
-    pub fn lex_single(&mut self) -> Result<bool, &'static str> {
+    pub fn lex_single(&mut self) -> Result<bool, String> {
 
         let t_type : TokenType = match self.curr_char {
             '+' => TokenType::ADD,
@@ -245,7 +243,7 @@ impl Lexer {
 
     // Attempt to lex from a multi-character, but fixed, set of tokens
     // This only includes sigils, not letters or keywords
-    pub fn lex_multi_fixed(&mut self) -> Result<bool, &'static str> {
+    pub fn lex_multi_fixed(&mut self) -> Result<bool, String> {
         let mut lex: String = self.curr_char.to_string();
         let start_row = self.curr_row;
         let start_col = self.curr_col;
@@ -321,7 +319,7 @@ impl Lexer {
 
     // Attempt to create a token for numbers, variables (id),
     //  text, and keywords
-    pub fn lex_other(&mut self) -> Result<bool, &'static str> {
+    pub fn lex_other(&mut self) -> Result<bool, String> {
 
         if self.curr_char.is_numeric() || self.curr_char == '.' {
             return self.lex_number();
@@ -339,7 +337,7 @@ impl Lexer {
 
     // Lex all concurrent letters (and underscores) together into a single id
     // This stops at whitespace (or a non-letter)
-    pub fn lex_id(&mut self) -> Result<bool, &'static str> {
+    pub fn lex_id(&mut self) -> Result<bool, String> {
         let start_row = self.curr_row;
         let start_col = self.curr_col;
         while self.curr_char.is_alphanumeric() || self.curr_char == '_' {
@@ -399,7 +397,7 @@ impl Lexer {
     }
 
     // Lex all of the characters inside of a string
-    pub fn lex_text(&mut self) -> Result<bool, &'static str> {
+    pub fn lex_text(&mut self) -> Result<bool, String> {
         let end_char = self.curr_char;
         let start_col = self.curr_col;
         let start_row = self.curr_row;
@@ -460,7 +458,7 @@ impl Lexer {
 
     // Lexes all concurrent numbers, creates a token, and returns
     //  true if the token was make successfully
-    pub fn lex_number(&mut self) -> Result<bool, &'static str> {
+    pub fn lex_number(&mut self) -> Result<bool, String> {
         if !(self.curr_char.is_numeric() || self.curr_char == '.') {
             return Ok(false);
         }
@@ -504,11 +502,11 @@ impl Lexer {
 // Generic main function that just runs the lexer and prints
 //  the output. If a filename is provided in the system
 //  arguments, lex from that file instead.
-pub fn main() {
+pub fn _test() {
     let args: Vec<String> = env::args().collect();
 
     let mut lex: Lexer;
-    let res: Result<Lexer, &'static str>;
+    let res: Result<Lexer, String>;
     if args.len() > 1 {
         let fname = &args[1];
         res = Lexer::from_file(fname.to_string());

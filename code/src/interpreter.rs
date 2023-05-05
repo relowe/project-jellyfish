@@ -1,16 +1,37 @@
 use std::{env, process};
 use crate::lexer::{TokenType};
 use crate::parser::{Parser, ParseTree, ParseType};
-use crate::semantic_analyzer::{SemanticAnalyzer, SymbolTable};
+use crate::semantic_analyzer::{SemanticAnalyzer};
 use crate::library_handler;
 use std::collections::{HashMap, BinaryHeap};
 use std::cmp::Ordering;
+
+// A boolean to determine if debug information should be displayed
+static DEBUG: bool = false;
+
+// Handle error reporting through web assembly
+// For right now we just print the error, but later
+//  on this would be passed to JavaScript code
+macro_rules! log {
+    ($($t:tt)*) => (println!("{}",  &format_args!($ ( $t ) *).to_string() ))
+}
+
+// Handle debugging through web assembly
+// For right now we just print the error, but later
+//  on this would be passed to JavaScript code
+macro_rules! debug {
+    ($($t:tt)*) => {
+        if DEBUG {
+            (println!("INT: {}",  &format_args!($ ( $t ) *).to_string() ))
+        }
+    }
+}
 
 // ======================
 // =  MEMORY MANAGEMENT =
 // ======================
 
-// different pointers types that will point at the memory array
+// Different pointers types that will point at the memory array
 #[derive(Debug, PartialEq, Clone)]
 pub enum PointerType {
     LINK(Box<PointerType>), // a link pointer that just marks the linked address
@@ -19,7 +40,7 @@ pub enum PointerType {
     STRUCTURE(String), // structure ID
 }
 
-// the pointer structure itself
+// The pointer structure itself
 #[derive(Clone, PartialEq, Debug)]
 pub struct Pointer {
     address: usize,
@@ -27,7 +48,7 @@ pub struct Pointer {
     pointer_type: PointerType,
 }
 
-// a memory address and size, used by the heap
+// A memory address and size, used by the heap
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct MemorySpace {
     address: usize,
@@ -62,6 +83,7 @@ pub struct Environment {
     heap: BinaryHeap<MemorySpace>,
     // linked_values stores how many times a variable has been linked
     // this is used when deallocing to ensure we don't delete expected values
+    // currently not in use, since we do not have links implemented
     _linked_values: HashMap<usize, i32>,
 }
 
@@ -151,8 +173,8 @@ impl Environment {
 
     // Access the data in a given memory address (this returns a clone)
     fn get_value(&self, pointer: Pointer) -> Result<PrimitiveType, String> {
-        println!{"{:?}", self.memory};
-        println!{"Getting memory address {}", pointer.address}
+        debug!{"{:?}", self.memory};
+        debug!{"Getting memory address {}", pointer.address}
         if pointer.address >= self.memory.len() {
             return Err("Accessing a memory address out of bounds".to_string());
         }
@@ -163,7 +185,7 @@ impl Environment {
     // Set the value at the specificed pointer address
     // Assumes the pointer is to a valid address, and that the type matches
     fn set_value(&mut self, pointer: Pointer, value: PrimitiveType) {
-        println!{"Setting address {} to {:?}", pointer.address, value};
+        debug!{"Setting address {} to {:?}", pointer.address, value};
         self.memory[pointer.address] = value.clone();
     }
 
@@ -171,7 +193,7 @@ impl Environment {
     // If the provided ID does not exist, try to recurse
     //  if provided ID cannot be found, error
     fn get_id(&self, id: String) -> Result<Pointer, String> {
-        println!{"Looking for id {}", id};
+        debug!{"Looking for id {}", id};
 
         if self.namespace.len() > 1 {
             for i in (0..self.namespace.len()).rev() {
@@ -192,7 +214,7 @@ impl Environment {
     // Insert a new ID with a pointer value
     // If the ID exists (in the current namespace)
     fn insert_id(&mut self, id: String, pointer: Pointer) -> Result<(), String> {
-        println!{"Adding new id {} with value {:?}", id, pointer};
+        debug!{"Adding new id {} with value {:?}", id, pointer};
         let len = self.namespace.len()-1;
 
         if self.namespace[len].contains_key(&id) {
@@ -445,6 +467,7 @@ pub enum LoopStatus {
     BREAK,
     CONTINUE,
     RETURN,
+    QUIT,
 }
 
 #[derive(Debug, Clone)]
@@ -455,34 +478,53 @@ struct InterpreterFunctionObj {
 }
 
 pub struct Interpreter {
-    symbol_table: SymbolTable,
+    // A temporary holder for the current return value
     return_value: LiteralValue,
+    // A flag to indicate the status of loops
+    // Certain conditions halt execution until the flag
+    //  has been reset to default
     loop_status: LoopStatus,
+    // An increment counter to count how deep into
+    //  a function call we are in
     in_function_call: i32,
+    // A memory environment to work with
     env: Environment,
+    // A list of all the structure key names for each structure
+    structure_keys: HashMap<String, Vec<String>>,
+    // A list of pointers for each structure key, for each structure
     structure_defs: HashMap<String, Vec<Pointer>>,
+    // Store the function object of each function
     function_defs: HashMap<String, InterpreterFunctionObj>,
+    // Store the current position in the text so that users
+    //  can get a proper error position
+    err_pos: (u32, u32), // (line, col)
 }
 
 impl Interpreter {
-    pub fn new(tree: &ParseTree) -> Self {
-        let symtab = SemanticAnalyzer::new().analyze(tree).expect("Semantic Analyzer errored");
+    // Create a new interpreter
+    pub fn new() -> Self {
         Interpreter {
-            symbol_table: symtab,
             return_value: LiteralValue::null(),
             loop_status: LoopStatus::DEFAULT,
             in_function_call: 0,
             env: Environment::new(),
+            structure_keys: HashMap::new(),
             structure_defs: HashMap::new(),
             function_defs: HashMap::new(),
+            err_pos: (0,0),
         }
+    }
+
+    // Update the error position to the current tree node
+    pub fn set_pos(&mut self, tree: &ParseTree) {
+        self.err_pos = (tree.token.row, tree.token.col);
     }
 
     // Get the amount of memory needed for a strucutre,
     //  this will just be the number of key names in the structure
     pub fn get_struct_size(&self, id: String) -> Result<usize, String> {
-        if self.symbol_table.struct_args.contains_key(&id) {
-            return Ok(self.symbol_table.struct_args[&id].keys().len());
+        if self.structure_defs.contains_key(&id) {
+            return Ok(self.structure_defs[&id].len());
         }
 
         Err(format!{"Cannot find structure {}", id})
@@ -490,11 +532,11 @@ impl Interpreter {
 
     // Get the offset of a key in the memory of a structure
     pub fn get_struct_key_offset(&self, struct_id: String, key_id: String) -> Result<usize, String> {
-        if self.symbol_table.struct_args.contains_key(&struct_id) {
-            let map = &self.symbol_table.struct_args[&struct_id];
+        if self.structure_keys.contains_key(&struct_id) {
+            let key_vec = &self.structure_keys[&struct_id];
 
             let mut offset = 0;
-            for (key, _value) in map.iter() {
+            for key in key_vec.iter() {
                 if key == &key_id {
                     return Ok(offset);
                 }
@@ -510,10 +552,7 @@ impl Interpreter {
     //  memory for substructures (like arrays of structures, or structs inside structs)
     // This does not do type checking, but does do size/structure checking
     fn set_literal_in_memory(&mut self, pointer: Pointer, lit: LiteralValue) -> Result<(), String> {
-        println!("++++++++++++++++++++++++++++++++++++");
-        println!{"Setting pointer {:?}", pointer};
-        println!{"with value {:?}", lit};
-        println!{"++++++++++++++++++++++++++++++++++++"};
+        debug!{"Setting pointer {:?} with value {:?}", pointer, lit};
         
         match pointer.pointer_type {
             // Just set the value for a primitive
@@ -549,7 +588,7 @@ impl Interpreter {
                     pointer_type = PointerType::ARRAY(new_bounds, Box::new(pointer_type));
                 }
 
-                println!("Offset scale = {}", offset_scale);
+                debug!("Offset scale = {}", offset_scale);
 
                 // Create a running pointer for the array
                 let mut ptr = Pointer {
@@ -571,7 +610,7 @@ impl Interpreter {
                     //  (or make a new pointer if it doesn't exist)
                     else {
                         let at_addr = self.env.get_value(ptr.clone())?;
-                        println!{"Currently at address {:?}", at_addr};
+                        debug!{"Currently at address {:?}", at_addr};
                         if at_addr == PrimitiveType::INITIALIZED || at_addr == PrimitiveType::NOTHING {
                             // create a new pointer for space
                             let s = match &pointer_type {
@@ -635,8 +674,8 @@ impl Interpreter {
                         ptr.size = struct_ptr.size;
                         let at_addr = self.env.get_value(ptr.clone())?;
 
-                        println!{"Need to set structure key {:?} to value {:?}", struct_ptr, val};
-                        println!{"We are seeing value {:?}", at_addr};
+                        debug!{"Need to set structure key {:?} to value {:?}", struct_ptr, val};
+                        debug!{"We are seeing value {:?}", at_addr};
 
                         if at_addr == PrimitiveType::INITIALIZED || at_addr == PrimitiveType::NOTHING {
                             let mut tmp_ptr = struct_ptr.clone();
@@ -659,12 +698,11 @@ impl Interpreter {
                 }
             }
             PointerType::LINK(linked_ptr) => {
-                println!("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^");
-                println!{"{:?}", linked_ptr};
+                debug!{"{:?}", linked_ptr};
             }
         }
 
-        println!{"+++++++++++++++++ ENVIRONMENT MEMORY +++++++++++++++++++\n{:?}", self.env.memory};
+        debug!{"+++++++++++++++++ ENVIRONMENT MEMORY +++++++++++++++++++\n{:?}", self.env.memory};
 
         Ok(())
     }
@@ -673,9 +711,7 @@ impl Interpreter {
     //  a literal value. 
     // TODO
     fn get_literal_in_memory(&mut self, pointer: Pointer) -> Result<LiteralValue, String> {
-        println!("++++++++++++++++++++++++++++++++++++");
-        println!{"Getting pointer {:?}", pointer};
-        println!{"++++++++++++++++++++++++++++++++++++"};
+        debug!{"Getting pointer {:?}", pointer};
 
         // Check for redirects first, and handle those
         let at_addr = self.env.get_value(pointer.clone())?;
@@ -717,7 +753,7 @@ impl Interpreter {
                     pointer_type = PointerType::ARRAY(new_bounds, Box::new(pointer_type));
                 }
 
-                println!("Offset scale = {}", offset_scale);
+                debug!("Offset scale = {}", offset_scale);
 
                 // Create a running pointer for the array
                 let mut ptr = Pointer {
@@ -773,7 +809,7 @@ impl Interpreter {
                         ptr.size = struct_ptr.size;
                         let at_addr = self.env.get_value(ptr.clone())?;
 
-                        println!{"We are seeing structure value {:?}", at_addr};
+                        debug!{"We are seeing structure value {:?}", at_addr};
 
                         if at_addr == PrimitiveType::INITIALIZED || at_addr == PrimitiveType::NOTHING {
                             return Err("Cannot get the value of an uninitialized memory address".to_string());
@@ -801,18 +837,35 @@ impl Interpreter {
         }
     }
 
+    // This evaluates an entire parse tree
     pub fn eval(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Run the semantic analyzer first
+        SemanticAnalyzer::new().analyze(tree)?;
+
+        // Set out current position
+        self.set_pos(tree);
+
         // DEF (could be None)
         if tree.children[0].is_some() {
-            self.eval_definitions(tree.children[0].as_ref().unwrap())?;
+            match self.eval_definitions(tree.children[0].as_ref().unwrap()) {
+                Err(s) => return Err(format!{"Error on Line: {}, Column: {}\n{}", self.err_pos.0, self.err_pos.1, s}),
+                _ => (),
+            };
         }
 
         // BODY (program section)
-        self.eval_body(tree.children[1].as_ref().unwrap())?;
+        match self.eval_body(tree.children[1].as_ref().unwrap()) {
+            Err(s) => return Err(format!{"Error on Line: {}, Column: {}\n{}", self.err_pos.0, self.err_pos.1, s}),
+            _ => (),            
+        };
+
         Ok(())
     }
 
     fn eval_definitions(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Set potision
+        self.set_pos(tree);
+        
         // STRUCT DEFS
         if tree.children[0].is_some() {
             self.eval_struct_defs(tree.children[0].as_ref().unwrap())?;
@@ -832,29 +885,41 @@ impl Interpreter {
     }
 
     fn eval_struct_defs(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Set potision
+        self.set_pos(tree);
+        
         // Create a pointer structure for each argument
         //  and store them in a vector for later
         // Add all structure objects
         for struct_def_tree in &tree.children {
             let id = unwrap_id_tree(struct_def_tree.as_ref().unwrap().children[0].as_ref().unwrap());
 
-            let mut struct_keys: Vec<Pointer> = Vec::new();
+            let mut struct_ptrs: Vec<Pointer> = Vec::new();
+            let mut struct_keys: Vec<String> = Vec::new();
 
             for struct_arg in &struct_def_tree.as_ref().unwrap().children[1].as_ref().unwrap().children {
-                // We don't actually need the id, just the expected pointers in order
+                // Add the id to the list of structure key ids
+                struct_keys.push(unwrap_id_tree(struct_arg.as_ref().unwrap()));
+
+                // Find the expected pointer type
                 let expected_type = self.eval_type(struct_arg.as_ref().unwrap().children[1].as_ref().unwrap())?;
-                println!("expected_type = {:?}", expected_type);
-                struct_keys.push(expected_type);
+                debug!("expected_type = {:?}", expected_type);
+                struct_ptrs.push(expected_type);
             }
-            println!("STRUCTURE POINTERS FOR {}", id);
-            println!{"{:?}", struct_keys};
-            self.structure_defs.insert(id, struct_keys);
+            debug!("STRUCTURE POINTERS FOR {}", id);
+            debug!{"{:?}", struct_keys};
+            debug!{"{:?}", struct_ptrs};
+            self.structure_defs.insert(id.clone(), struct_ptrs);
+            self.structure_keys.insert(id.clone(), struct_keys);
         }
         
         Ok(())
     }
 
     fn eval_global_defs(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Set potision
+        self.set_pos(tree);
+        
         for child in &tree.children {
             if child.as_ref().unwrap().parse_type == ParseType::ASSIGN {
                 self.eval_assignment(child.as_ref().unwrap())?;
@@ -868,6 +933,8 @@ impl Interpreter {
     }
 
     fn eval_function_defs(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Set potision
+        self.set_pos(tree);
 
         // Loop through each child, get its name, params, and arguments
         for child in &tree.children {
@@ -892,20 +959,17 @@ impl Interpreter {
             self.function_defs.insert(function_id, fn_obj);
         }
 
-        println!{"**********************************"};
-        println!{"**********************************"};
-        println!{"**********************************"};
-        println!{"{:?}", self.function_defs};
-        println!{"**********************************"};
-        println!{"**********************************"};
-        println!{"**********************************"};
+        debug!{"**********FUNCTIONS**************\n{:?}", self.function_defs};
 
         Ok(())
     }
 
     /// 
     fn eval_body(&mut self, tree: &ParseTree) -> Result<(), String> {
-        println!{"EVAL BODY"};
+        // Set potision
+        self.set_pos(tree);
+        
+        debug!{"EVAL BODY"};
         let mut is_other: bool = false;
         for child in &tree.children {
             match child.as_ref().unwrap().parse_type {
@@ -945,6 +1009,9 @@ impl Interpreter {
     /// Todo Memory
     /// 
     fn eval_resolvable(&mut self, tree: &ParseTree) -> Result<LiteralValue, String> {
+        // Set potision
+        self.set_pos(tree);
+        
         // Catch literals
         if tree.parse_type == ParseType::LIT {
             return match &tree.token.token_type {
@@ -993,7 +1060,7 @@ impl Interpreter {
                     _ => 0.0,
                 };
 
-                println!{"DID MATH, GOT VALUE {} {} {} => {}", left_val, tree.token.lexeme.clone().unwrap_or("".to_string()), right_val, result};
+                debug!{"DID MATH, GOT VALUE {} {} {} => {}", left_val, tree.token.lexeme.clone().unwrap_or("".to_string()), right_val, result};
 
                 return Ok(LiteralValue::from_number(result));
             }
@@ -1025,11 +1092,9 @@ impl Interpreter {
                 tree.parse_type == ParseType::GETSTRUCT ||
                 tree.parse_type == ParseType::ID {
             let pointer = self.eval_reference(tree)?;
-            println!("Looking for literal at pointer {:?}", pointer);
+            debug!("Looking for literal at pointer {:?}", pointer);
             let val = self.get_literal_in_memory(pointer.clone())?;
-            println!("$$$$$$$$$$$$$$$$$$$$$");
-            println!{"{:?}", val};
-            println!("$$$$$$$$$$$$$$$$$$$$$$");
+            debug!{"  Found {:?}", val};
             return Ok(val);
         }
 
@@ -1083,10 +1148,7 @@ impl Interpreter {
                 }
             }
 
-
-            println!{"%%%%%%%%%%%%%%%%%%%"};
-            println!{"{:?}", self.env.memory};
-            println!{"%%%%%%%%%%%%%%%%%%%%"};
+            debug!{"{:?}", self.env.memory};
 
             // call body and capture return value
             let prev_return_val = self.return_value.clone();
@@ -1167,7 +1229,10 @@ impl Interpreter {
     ///  (a link will be made for it instead)
     /// Assignment will be in charge of setting the pointer value
     fn eval_vardef(&mut self, tree: &ParseTree) -> Result<Pointer, String> {
-        println!{"EVAL VARDEF"};
+        // Set potision
+        self.set_pos(tree);
+        
+        debug!{"EVAL VARDEF"};
         // Get the pointer
         let mut pointer = self.eval_type(tree.children[1].as_ref().unwrap())?;
 
@@ -1176,7 +1241,7 @@ impl Interpreter {
         if tree.children[0].as_ref().unwrap().parse_type == ParseType::ID {
             let id = unwrap_id_tree(tree.children[0].as_ref().unwrap());
 
-            println!{"Adding symbol {}", id};
+            debug!{"Adding symbol {}", id};
             pointer.address = self.env.alloc(pointer.size.clone());
             self.env.insert_id(id, pointer.clone())?;
         }
@@ -1185,7 +1250,7 @@ impl Interpreter {
             for id_tree in &tree.children[0].as_ref().unwrap().children {
                 let id = unwrap_id_tree(id_tree.as_ref().unwrap());
 
-                println!{"Adding symbol {}", id};            
+                debug!{"Adding symbol {}", id};            
                 pointer.address = self.env.alloc(pointer.size.clone());
                 self.env.insert_id(id, pointer.clone())?;
             }
@@ -1197,6 +1262,9 @@ impl Interpreter {
     /// Create a pointer that corresponds to the provided type
     /// This pointer will have an invalid memory address
     fn eval_type(&mut self, tree: &ParseTree) -> Result<Pointer, String> {
+        // Set potision
+        self.set_pos(tree);
+        
         // Get the type of variable
         let mut pointer = Pointer{
             pointer_type: PointerType::PRIMITIVE,
@@ -1261,14 +1329,17 @@ impl Interpreter {
     ///            <>!=      if   elif    else
     /// Children: BINCOMP, BLOCK, (IF || BLOCK)
     fn eval_if(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Set potision
+        self.set_pos(tree);        
+
         // Evaluate the comparison
         let cond = self.eval_conditional(tree.children[0].as_ref().unwrap())?;
 
         // Evaluate the body
         if bool::from(cond) {
-            self.symbol_table.scope_in();
+            self.env.scope_in();
             self.eval_body(tree.children[1].as_ref().unwrap())?;
-            self.symbol_table.scope_out();
+            self.env.scope_out();
         }
         else {
             if tree.children[2].is_some() {
@@ -1279,9 +1350,9 @@ impl Interpreter {
     
                 // Evaluate an else block if it exists
                 else if tree.children[2].as_ref().unwrap().parse_type == ParseType::BLOCK {
-                    self.symbol_table.scope_in();
+                    self.env.scope_in();
                     self.eval_body(tree.children[2].as_ref().unwrap())?;
-                    self.symbol_table.scope_out();
+                    self.env.scope_out();
                 }
             }
         }
@@ -1292,6 +1363,9 @@ impl Interpreter {
 
     /// 
     fn eval_conditional(&mut self, tree: &ParseTree) -> Result<LiteralValue, String> {
+        // Set potision
+        self.set_pos(tree);
+        
         // Catch binary comparisons
         if tree.parse_type == ParseType::BINCOMP {
             let left = self.eval_conditional(tree.children[0].as_ref().unwrap())?;
@@ -1318,7 +1392,7 @@ impl Interpreter {
                 _ => false,
             };
 
-            println!{"DID COMPARISON, GOT {}", result};
+            debug!{"DID COMPARISON, GOT {}", result};
 
             return Ok(LiteralValue::from_bool(result));
         }
@@ -1328,24 +1402,33 @@ impl Interpreter {
 
     /// Todo
     /// 
-    fn eval_link(&mut self, _tree: &ParseTree) -> Result<(), String> {
+    fn eval_link(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Set potision
+        self.set_pos(tree);
+
         Ok(())
     }
 
     /// Todo
     /// 
-    fn eval_unlink(&mut self, _tree: &ParseTree) -> Result<(), String> {
+    fn eval_unlink(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Set potision
+        self.set_pos(tree);
+
         Ok(())
     }
 
     /// 
     fn eval_while(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Set potision
+        self.set_pos(tree);
+        
         // Evaluate the comparison
         while bool::from(self.eval_conditional(tree.children[0].as_ref().unwrap())?) {
             // Evaluate the while block
-            self.symbol_table.scope_in();
+            self.env.scope_in();
             self.eval_body(tree.children[1].as_ref().unwrap())?;
-            self.symbol_table.scope_out();
+            self.env.scope_out();
 
             if self.loop_status == LoopStatus::BREAK {
                 self.loop_status = LoopStatus::DEFAULT;
@@ -1354,7 +1437,7 @@ impl Interpreter {
             if self.loop_status == LoopStatus::CONTINUE {
                 self.loop_status = LoopStatus::DEFAULT;
             }
-            if self.loop_status == LoopStatus::RETURN {
+            if self.loop_status == LoopStatus::RETURN || self.loop_status == LoopStatus::QUIT {
                 break;
             }     
         }
@@ -1364,12 +1447,15 @@ impl Interpreter {
 
     /// 
     fn eval_repeat(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Set potision
+        self.set_pos(tree);
+        
         let repeat_lit = self.eval_resolvable(tree.children[0].as_ref().unwrap())?;
         let repeat_val = repeat_lit.extract_number().unwrap_or(0.0) as i32;
 
-        println!{"REPEATING BLOCK {} TIMES", repeat_val};
+        debug!{"REPEATING BLOCK {} TIMES", repeat_val};
         for i in 0..repeat_val {
-            println!{"REPEAT LOOP {}", i};
+            debug!{"REPEAT LOOP {}", i};
             self.env.scope_in();
             self.eval_body(tree.children[1].as_ref().unwrap())?;
             self.env.scope_out();
@@ -1377,7 +1463,7 @@ impl Interpreter {
             if self.loop_status == LoopStatus::CONTINUE {
                 self.loop_status = LoopStatus::DEFAULT;
             }
-            else if self.loop_status == LoopStatus::BREAK {
+            else if self.loop_status == LoopStatus::BREAK || self.loop_status == LoopStatus::QUIT {
                 self.loop_status = LoopStatus::DEFAULT;
                 break;
             }
@@ -1389,6 +1475,9 @@ impl Interpreter {
     /// Todo
     /// 
     fn eval_repeat_for(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Set potision
+        self.set_pos(tree);
+        
         // Get the pointer type of thing to loop over
         let arr_ptr = self.eval_reference(tree.children[1].as_ref().unwrap())?;
         
@@ -1416,14 +1505,14 @@ impl Interpreter {
 
         // Start looping through each object
         for child in val.values.unwrap() {
-            println!{"CHILD:: {:?}", child};
+            debug!{"CHILD:: {:?}", child};
             // Scope in
             self.env.scope_in();
 
             // Load in the new value
             loop_ptr.address = self.env.alloc(loop_ptr.size);
-            self.env.insert_id(id.clone(), loop_ptr.clone());
-            self.set_literal_in_memory(loop_ptr.clone(), child);
+            self.env.insert_id(id.clone(), loop_ptr.clone())?;
+            self.set_literal_in_memory(loop_ptr.clone(), child)?;
 
             // Run the body
             self.eval_body(tree.children[2].as_ref().unwrap())?;
@@ -1434,7 +1523,7 @@ impl Interpreter {
             if self.loop_status == LoopStatus::CONTINUE {
                 self.loop_status = LoopStatus::DEFAULT;
             }
-            else if self.loop_status == LoopStatus::BREAK {
+            else if self.loop_status == LoopStatus::BREAK || self.loop_status == LoopStatus::QUIT {
                 self.loop_status = LoopStatus::DEFAULT;
                 break;
             }
@@ -1445,7 +1534,9 @@ impl Interpreter {
 
     /// 
     fn eval_repeat_forever(&mut self, tree: &ParseTree) -> Result<(), String> {
-        
+        // Set potision
+        self.set_pos(tree);
+
         loop {
             self.env.scope_in();
             self.eval_body(tree.children[0].as_ref().unwrap())?;
@@ -1454,7 +1545,7 @@ impl Interpreter {
             if self.loop_status == LoopStatus::CONTINUE {
                 self.loop_status = LoopStatus::DEFAULT;
             }
-            else if self.loop_status == LoopStatus::BREAK {
+            else if self.loop_status == LoopStatus::BREAK || self.loop_status == LoopStatus::QUIT {
                 self.loop_status = LoopStatus::DEFAULT;
                 break;
             }
@@ -1465,6 +1556,8 @@ impl Interpreter {
     /// Todo Memory
     /// 
     fn eval_assignment(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Set potision
+        self.set_pos(tree);
 
         // Get the value to assign
         let res = self.eval_resolvable(tree.children[1].as_ref().unwrap())?;
@@ -1489,9 +1582,8 @@ impl Interpreter {
     // Array -> move address and change bounds (or delete bounds)
     // Struct -> move address based on key
     fn eval_reference(&mut self, tree: &ParseTree) -> Result<Pointer, String> {
-
-        println!{"REFERENCE TREE"};
-        tree.print();
+        // Set potision
+        self.set_pos(tree);
 
         let mut ptr: Pointer;
 
@@ -1509,17 +1601,13 @@ impl Interpreter {
                 _ => (),
             };
 
-            println!{"@@@@@@@@@@@@@@@@@@@@@@@@@@"};
-            println!{"{:?}", ptr};
-            println!{"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"};
-
             if tree.parse_type == ParseType::GETINDEX {
                 let (mut bounds, arr_type) = match ptr.pointer_type.clone(){
                     PointerType::ARRAY(bounds, arr_type) => (bounds.clone(), arr_type),
                     _ => return Err("Cannot index a non-array".to_string()),
                 };
 
-                println!{"STARTING ADDRESS == {} == ", ptr.address};
+                debug!{"STARTING ADDRESS == {} == ", ptr.address};
 
                 // Figure out how far we need to offset the new pointer
                 let mut offset = 1;
@@ -1532,7 +1620,7 @@ impl Interpreter {
                 for (idx, bound) in index_tree.children.iter().zip(bounds.clone().iter()) {
                     let idx_val = self.eval_resolvable(idx.as_ref().unwrap())?.extract_number().unwrap_or(0.0) as i32;
 
-                    println!{"INDEXING ARRAY AT POSISION {}", idx_val};
+                    debug!{"INDEXING ARRAY AT POSISION {}", idx_val};
 
                     // low to high bounds
                     if bound.0 < bound.1 {
@@ -1561,7 +1649,7 @@ impl Interpreter {
                         offset /= (bound.0 - bound.1).abs() + 1;
                     }
 
-                    println!{"MOVED TO ADDRESS == {} == ", ptr.address};
+                    debug!{"MOVED TO ADDRESS == {} == ", ptr.address};
                     // catch division rounding errors that lowers offset too much
                     if offset == 0 {
                         offset = 1;
@@ -1577,7 +1665,7 @@ impl Interpreter {
                     ptr.pointer_type = PointerType::ARRAY(bounds, Box::new(*arr_type.clone()));
                 }
 
-                println!{"ENDING ADDRESS == {} == ", ptr.address};
+                debug!{"ENDING ADDRESS == {} == ", ptr.address};
 
                 return Ok(ptr);
             }
@@ -1623,21 +1711,20 @@ impl Interpreter {
                 // Get the expected pointer type, and set the address to the proper one
                 let mut new_ptr = self.structure_defs[&struct_name][offset].clone();
                 new_ptr.address = ptr.address + offset;
-
-                println!{"````````````````````"};
-                println!{"{:?}", new_ptr};
-                println!{"````````````````````"};
                 
                 return Ok(new_ptr);
             }
         }
 
-        println!("FINDING SYMBOL {}", unwrap_id_tree(&tree));
+        debug!("FINDING SYMBOL {}", unwrap_id_tree(&tree));
         self.env.get_id(unwrap_id_tree(&tree))
     }
 
     /// 
     fn eval_return(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Set potision
+        self.set_pos(tree);
+        
         self.return_value = LiteralValue::null();
         
         // Check to see if the return type is nothing
@@ -1651,16 +1738,26 @@ impl Interpreter {
         Ok(())
     }
 
-    fn eval_quit(&mut self, _tree: &ParseTree) -> Result<(), String> {
-        process::exit(0);
+    fn eval_quit(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Set potision
+        self.set_pos(tree);
+
+        self.loop_status = LoopStatus::QUIT;
+        Ok(())
     }
 
-    fn eval_continue(&mut self, _tree: &ParseTree) -> Result<(), String> {
+    fn eval_continue(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Set potision
+        self.set_pos(tree);
+        
         self.loop_status = LoopStatus::CONTINUE;
         Ok(())
     }
 
-    fn eval_break(&mut self, _tree: &ParseTree) -> Result<(), String> {
+    fn eval_break(&mut self, tree: &ParseTree) -> Result<(), String> {
+        // Set potision
+        self.set_pos(tree);
+        
         self.loop_status = LoopStatus::BREAK;
         Ok(())
     }  
@@ -1685,12 +1782,23 @@ pub fn main() {
     ".to_string()).expect("Could not create lexer");
     }
 
-    let tree = p.parse().expect("Error");
+    let tree = match p.parse() {
+        Ok(t) => t.unwrap(),
+        Err(s) => {
+            log!{"{}", s};
+            return;
+        },
+    };
 
-    tree.clone().expect("error").print();
-    println!("\n\n\n\n");
+    if DEBUG {
+        tree.print();
+        println!("\n\n\n\n");
+    }
 
-    let mut int = Interpreter::new(tree.as_ref().unwrap());
-    int.eval(tree.as_ref().unwrap()).unwrap();
+    let mut int = Interpreter::new();
+    match int.eval(&tree) {
+        Err(s) => log!{"{}", s},
+        Ok(_) => (),
+    };
 
 }
