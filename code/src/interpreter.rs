@@ -1073,10 +1073,12 @@ impl Interpreter {
 
         // Catch function calls
         else if tree.parse_type == ParseType::CALL {
-            // get all argument values
+            // get all argument values (if there are any)
             let mut vals: Vec<LiteralValue> = Vec::new();
-            for child in &tree.children[1].as_ref().unwrap().children {
-                vals.push(self.eval_resolvable(child.as_ref().unwrap())?);
+            if tree.children[1].as_ref().is_some() {
+                for child in &tree.children[1].as_ref().unwrap().children {
+                    vals.push(self.eval_resolvable(child.as_ref().unwrap())?);
+                }
             }
 
             // If this is print, we handle it specially

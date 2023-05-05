@@ -555,12 +555,25 @@ impl SemanticAnalyzer {
 
                 let ex_res_type = self.expected_resolve_type.clone();
 
-                for (fun_arg, child) in fun_obj.params.into_iter().zip(tree.children[1].as_ref().unwrap().children.iter()) {
-                    self.expected_resolve_type = Some(fun_arg.clone());
-                    let res_type = self.analyze_resolvable(child.as_ref().unwrap())?;
-    
-                    if res_type != fun_arg.clone() {
-                        return Err(format!{"{} Function argument {:?} does not match expected parameter type {:?}", self.err_header(child.as_ref().unwrap()), fun_arg.clone(), res_type});
+                // Functions with no arguments
+                if fun_obj.params.len() == 0 {
+                    if tree.children[1].as_ref().is_some() {
+                        return Err(format!{"{} Function {} does not expect arguments", self.err_header(tree), fun_name})
+                    }
+                }
+                // Functions with arguments
+                else {
+                    if tree.children[0].as_ref().is_none() {
+                        return Err(format!{"{} Function {} expected arguments", self.err_header(tree), fun_name})
+                    }
+
+                    for (fun_arg, child) in fun_obj.params.into_iter().zip(tree.children[1].as_ref().unwrap().children.iter()) {
+                        self.expected_resolve_type = Some(fun_arg.clone());
+                        let res_type = self.analyze_resolvable(child.as_ref().unwrap())?;
+        
+                        if res_type != fun_arg.clone() {
+                            return Err(format!{"{} Function argument {:?} does not match expected parameter type {:?}", self.err_header(child.as_ref().unwrap()), fun_arg.clone(), res_type});
+                        }
                     }
                 }
 
