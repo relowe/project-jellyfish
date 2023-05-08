@@ -1,0 +1,15 @@
+definitions
+    # Recursive fibonacci function
+    function fib(n: number) returns number
+        if n <= 1 then 
+            return n
+        end if
+
+        return fib(n-1) + fib(n-2)
+    end function
+end definitions
+
+program
+    # Test the function
+    print("The 10th fib number is : ", fib(10))
+end program

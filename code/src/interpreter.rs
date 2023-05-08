@@ -1,4 +1,4 @@
-use std::{env, process};
+use std::{env};
 use crate::lexer::{TokenType};
 use crate::parser::{Parser, ParseTree, ParseType};
 use crate::semantic_analyzer::{SemanticAnalyzer};
