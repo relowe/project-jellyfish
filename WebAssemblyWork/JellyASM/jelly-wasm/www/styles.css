@@ -1,0 +1,52 @@
+.terminal-container {
+    display: flex;
+    flex-direction: column;
+    margin: 5px;
+    align-items: center;
+    justify-content: center;
+}
+
+.terminal-flexbox {
+    display: flex;
+    height: 500px;
+    width: 100%;
+    margin-bottom: 5px;
+    align-items: center;
+    justify-content: center;
+}
+
+.terminal {
+    background-color: black;
+    background-image: radial-gradient(
+        rgba(0, 150, 0, 0.3), black 120%
+      );
+    color: #39ff14;
+    font: 14px Inconsolata, monospace;
+    margin: auto;
+    width: 50%;
+    height:100%;
+    margin: 2px;
+    overflow: scroll;
+}
+
+.terminal[contenteditable="true"] {
+    caret-color: #39ff14;
+    caret-shape: block;
+}
+
+.run-button {
+    background-color: #39ff14;
+    width: 100px;
+    height: 50px;
+    border-radius: 12px;
+    font-size: 30px;
+    color: whitesmoke;
+    outline-color: #297f04;
+    outline-width: 3px;
+}
+
+.run-button:hover {
+    background-color: #29df04;
+    color: gray;
+    outline-color: #295f04;
+}
