@@ -1006,7 +1006,6 @@ impl Interpreter {
         Ok(())
     }
 
-    /// Todo Memory
     /// 
     fn eval_resolvable(&mut self, tree: &ParseTree) -> Result<LiteralValue, String> {
         // Set potision
@@ -1326,8 +1325,6 @@ impl Interpreter {
         Ok(pointer)
     }
 
-    ///            <>!=      if   elif    else
-    /// Children: BINCOMP, BLOCK, (IF || BLOCK)
     fn eval_if(&mut self, tree: &ParseTree) -> Result<(), String> {
         // Set potision
         self.set_pos(tree);        
@@ -1361,7 +1358,6 @@ impl Interpreter {
     }
 
 
-    /// 
     fn eval_conditional(&mut self, tree: &ParseTree) -> Result<LiteralValue, String> {
         // Set potision
         self.set_pos(tree);
@@ -1472,8 +1468,6 @@ impl Interpreter {
         Ok(())
     }
 
-    /// Todo
-    /// 
     fn eval_repeat_for(&mut self, tree: &ParseTree) -> Result<(), String> {
         // Set potision
         self.set_pos(tree);
@@ -1537,6 +1531,7 @@ impl Interpreter {
         // Set potision
         self.set_pos(tree);
 
+        // Continually scope in, call the body, and scope out
         loop {
             self.env.scope_in();
             self.eval_body(tree.children[0].as_ref().unwrap())?;
@@ -1553,7 +1548,6 @@ impl Interpreter {
         Ok(())
     }
 
-    /// Todo Memory
     /// 
     fn eval_assignment(&mut self, tree: &ParseTree) -> Result<(), String> {
         // Set potision
@@ -1763,6 +1757,13 @@ impl Interpreter {
     }  
 }
 
+
+// The main function that runs the interpreter and prints
+//  the output. If a filename is provided in the system
+//  arguments, interpret that file instead.
+// To instead run the interpreter as a unit, you would need
+//  to first run the parser, then interpret on the resulting
+//  parse tree, making sure to unwrap any potential errors.
 pub fn main() {
 
     let args: Vec<String> = env::args().collect();
