@@ -69,17 +69,17 @@ Some sections of the BNF have been simplified into regex
 
 < parameters >           ::= (ID) < parameter > < parameters' >
                            | ''                         
-						   
-< parameters' >        ::= COMMA < parameters >
-						   | ''
+               
+< parameters' >          ::= COMMA < parameters >
+                           | ''
 
-< parameter >          ::= ID COLON [CHANGEABLE]? < fun-arg-type >
+< parameter >            ::= ID COLON [CHANGEABLE]? < fun-arg-type >
 
 < fun-arg-type >         ::= < basic-type >
                            | ARRAY < fun-arg-type' >
 
 < fun-arg-type' >        ::= OF < basic-type >
-                           | LBRACKET < bounds > RBRACKET OF < basic-type >
+                           | < bounds > OF < basic-type >
 
 < fun-return-type >      ::= NOTHING
                            | < basic-type >
@@ -89,6 +89,7 @@ Some sections of the BNF have been simplified into regex
 
 < fun-statement >        ::= RETURN < return-value >
                            | < statement >
+// ^^ Technically incorrect syntax, but is explined in the parser
 
 < return-value >         ::= NOTHING
                            | < resolvable >
@@ -107,15 +108,15 @@ Some sections of the BNF have been simplified into regex
                            | (UNLINK) < unlink >
                            | QUIT
                            | < resolvable >
-						   
+               
 < asg or var-def or res >::= (ID) (COLON) < variable-def >
                            | IDS COLON < variable-def >
-						               | < reference > EQ < assignment' >
+                           | < reference > EQ < assignment' >
                            | < reference > < resolvable2 >
 
 < asg or var-def >       ::= (ID) (COLON) < variable-def >
                            | IDS COLON < variable-def >
-						               | < reference > EQ < assignment' >
+                           | < reference > EQ < assignment' >
 
 < unlink >               ::= UNLINK < reference >
 
@@ -125,13 +126,14 @@ Some sections of the BNF have been simplified into regex
 < loop-statement >       ::= BREAK
                            | CONTINUE
                            | < statement >
+// ^^ Technically incorrect syntax, but is explined in the parser
 
 < variable-def >         ::= < ids > COLON < variable-type > < var-def-equal >
 
 < ids >                  ::= ID < ids' >
-						 
-< ids' >        		     ::= COMMA [< ids >]?
-						               | ''
+             
+< ids' >                 ::= COMMA [< ids >]?
+                           | ''
 
 < var-def-equal >        ::= EQ < resolvable >
                            | ''
@@ -141,22 +143,24 @@ Some sections of the BNF have been simplified into regex
                            | LINK TO < basic-type >
 
 < type or bounds >       ::= OF < basic-type >
-                           | LBRACKET < bounds > RBRACKET OF < basic-type >
+                           | < bounds > OF < basic-type >
 
 < basic-type >           ::= NUMBER
                            | TEXT
                            | ID     // for structures
 
-< bounds >               ::= < bound > < bounds' >
+< bounds >               ::= LBRACKET < bound-list > RBRACKET
+
+< bound-list >           ::= < bound > < bound-list' >
                            | ''
-						 
-< bounds' >        		 ::= COMMA < bounds >
-						   | ''
+             
+< bound-list' >          ::= COMMA < bound-list >
+                           | ''
 
 < bound >                ::= < resolvable > < bound' >
-						   
-< bound' >				 ::= TO < resolvable >
-						   | ''
+               
+< bound' >               ::= TO < resolvable >
+                           | ''
 
 < assignment >           ::= < reference > EQ < assignment' >
 
@@ -170,8 +174,8 @@ Some sections of the BNF have been simplified into regex
 < if2 >                  ::= END IF
                            | ELSE < if2 elif >
 
-< if2 elif >		      	 ::= (IF) < if >
-						               | < statements > END IF
+< if2 elif >             ::= (IF) < if >
+                           | < statements > END IF
 
 < repeat >               ::= REPEAT < repeat' >
 
@@ -180,7 +184,7 @@ Some sections of the BNF have been simplified into regex
                            | FOR ALL ID IN < resolvable > < loop-statements > END REPEAT
 
 < condition >            ::= < logic-andable > < condition' >
-						   
+               
 < condition' >           ::= OR < logic-andable > < condition' >           
                            | ''
 
@@ -206,7 +210,7 @@ Some sections of the BNF have been simplified into regex
                            | NE < resolvable >
 
 < linked or not >        ::= LINKED
-						   | WORDNOT LINKED
+                           | WORDNOT LINKED
 
 < resolvable >           ::= < bit-orable >
 
@@ -216,19 +220,19 @@ Some sections of the BNF have been simplified into regex
 
 ====================================
 < bit-orable >           ::= < bit-xorable > < bit-orable' >
-						   
-< bit-orable' >			 ::= BOR < bit-orable >
-						   | ''
+               
+< bit-orable' >          ::= BOR < bit-orable >
+                           | ''
 
 < bit-xorable >          ::= < bit-andable > < bit-xorable' >
-						   
-< bit-xorable' >		 ::= BXOR < bit-xorable >
-						   | ''
+               
+< bit-xorable' >         ::= BXOR < bit-xorable >
+                           | ''
 
 < bit-andable >          ::= < bit-shiftable >  < bit-andable' >
-						   
-< bit-andable' >		 ::= BAND < bit-andable >
-						   | ''
+               
+< bit-andable' >         ::= BAND < bit-andable >
+                           | ''
 
 < bit-shiftable >        ::= < expression > < bit-shiftable' >
 
@@ -238,7 +242,7 @@ Some sections of the BNF have been simplified into regex
 
 < expression >           ::= < term > < expression' >
 
-< expression' >			 ::= ADD < expression >
+< expression' >          ::= ADD < expression >
                            | SUB < expression >
                            | ''
 
@@ -266,8 +270,8 @@ Some sections of the BNF have been simplified into regex
                            | (LCURLY) < struct-lit >
                            | (LBRACKET) < array-lit >
 
-< ref-or-call >			 ::= LPAREN < call' >
-						   | < reference' >
+< ref-or-call >          ::= LPAREN < call' >
+                           | < reference' >
 
 < struct-lit >           ::= LCURLY < struct-items > RCURLY
 
@@ -276,11 +280,11 @@ Some sections of the BNF have been simplified into regex
                            | ''
 
 < struct-items' >        ::= COMMA < struct-items'' >
-						   | ''
+                           | ''
 
 < struct-items'' >       ::= < resolvable > < struct-items' >
                            | LINK TO < ref-or-nothing >
-						   | ''
+                           | ''
 
 < ref-or-nothing >       ::= NOTHING
                            | < reference >
@@ -297,20 +301,20 @@ Some sections of the BNF have been simplified into regex
 
 < reference' >           ::= LBRACKET < index > RBRACKET < reference' >
                            | PERIOD ID < reference' >
-						   | ''
+                           | ''
 
 < index >                ::= < resolvable > < index' >
                            | ''
 
-< index' >				 ::= COMMA < index >
-						   | ''
+< index' >               ::= COMMA < index >
+                           | ''
 
 < call >                 ::= ID LPAREN < call' >
 
 < call' >                ::= < arg-list > RPAREN
-                           | RPAREN
 
 < arg-list >             ::= < resolvable > < arg-list' >
+                           | ''
 
-< arg-list' >            ::= COMMA [< arg-list >]?
+< arg-list' >            ::= COMMA < arg-list >
                            | ''
